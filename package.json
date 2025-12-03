@@ -1,16 +1,1 @@
-{
-  "name": "repo-lint",
-  "version": "1.0.0",
-  "private": true,
-  "engines": {
-    "node": ">=20"
-  },
-  "devDependencies": {
-    "eslint": "^9.39.1",
-    "htmlhint": "^0.13.4"
-  },
-  "scripts": {
-    "lint:js": "eslint script.js",
-    "lint:html": "htmlhint index.html"
-  }
-}
+{"name":"repo-lint","version":"1.0.0","private":true,"engines":{"node":">=20"},"devDependencies":{"eslint":"^9.39.1","htmlhint":"^0.13.3"},"scripts":{"lint:js":"eslint script.js","lint:html":"htmlhint index.html"}}
