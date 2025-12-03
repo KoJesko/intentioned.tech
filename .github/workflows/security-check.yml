@@ -1,0 +1,31 @@
+name: Security & Dependency Check
+
+on:
+  pull_request:
+    paths:
+      - 'requirements.txt'
+      - '**.py'
+
+jobs:
+  security-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety bandit
+      
+      - name: Run safety check
+        run: safety check --file requirements.txt
+      
+      - name: Run bandit security linting
+        run: bandit -r . --exclude ./e1 -ll

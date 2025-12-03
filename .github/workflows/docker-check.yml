@@ -1,0 +1,32 @@
+name: Docker Build & Lint
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'setup.sh'
+
+jobs:
+  docker-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Lint Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+      
+      - name: Build Docker image
+        run: docker build -t test-image:pr-${{ github.event.pull_request.number }} .
+      
+      - name: Test container starts
+        run: |
+          docker run -d --name test-container test-image:pr-${{ github.event.pull_request.number }}
+          sleep 5
+          docker logs test-container
+          docker stop test-container
