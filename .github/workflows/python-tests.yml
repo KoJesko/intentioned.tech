@@ -31,9 +31,6 @@ jobs:
       - name: Validate Python syntax
         run: |
           python -m py_compile server.py
-          python -m py_compile ollama_stt_app.py
-          python -m py_compile ollama_stt_simple.py
-          python -m py_compile ollama_tts_app.py
           python -m py_compile secure_host.py
       
       - name: Import server module
