@@ -33,6 +33,7 @@ model_cache/
 
 # SSL Certificates (SECRETS - DO NOT COMMIT)
 *.pem
+*.key
 cert.pem
 key.pem
 
