@@ -6,6 +6,9 @@ on:
       - '**.js'
       - '**.html'
 
+permissions:
+  contents: read
+
 jobs:
   js-lint:
     runs-on: ubuntu-latest

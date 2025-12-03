@@ -6,6 +6,9 @@ on:
       - '**.py'
       - 'requirements.txt'
 
+permissions:
+  contents: read
+
 jobs:
   python-tests:
     runs-on: ubuntu-latest
