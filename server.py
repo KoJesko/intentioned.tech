@@ -65,8 +65,16 @@ async def serve_static(filename: str):
     try:
         candidate_path = (PROJECT_ROOT / filename).resolve()
         # Only allow serving files that reside inside PROJECT_ROOT
-        if not str(candidate_path).startswith(str(PROJECT_ROOT)):
-            return FileResponse(PROJECT_ROOT / "index.html")
+        try:
+            # For Python 3.9+, use .is_relative_to; otherwise, use .relative_to
+            if not candidate_path.is_relative_to(PROJECT_ROOT):
+                return FileResponse(PROJECT_ROOT / "index.html")
+        except AttributeError:
+            # Fallback for Python <3.9
+            try:
+                candidate_path.relative_to(PROJECT_ROOT)
+            except ValueError:
+                return FileResponse(PROJECT_ROOT / "index.html")
         if candidate_path.exists() and candidate_path.is_file():
             return FileResponse(candidate_path)
     except Exception:
