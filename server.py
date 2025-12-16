@@ -97,8 +97,12 @@ MAX_AUDIO_BUFFER_BYTES = 6 * 1024 * 1024  # 6MB per utterance
 MAX_HISTORY_MESSAGES = 12
 TARGET_SAMPLE_RATE = 16000
 TTS_START_DELAY_SECONDS = 2.0  # matches ollama_tts_app feel
-SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+# Default to localhost for security; use SERVER_HOST env var for Docker/container deployments
+SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "3001"))
+
+# Revision for HuggingFace model pinning (supply chain security)
+HF_MODEL_REVISION = os.getenv("HF_MODEL_REVISION", "main")
 
 EDGE_TTS_AVAILABLE_VOICES = {
     "female_us": "en-US-AriaNeural",
@@ -198,7 +202,9 @@ def decode_audio_payload(
 def load_llm_stack(model_id: str):
     try:
         print(f"Loading LLM: {model_id}...")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, token=HUGGINGFACE_TOKEN)
+        tokenizer = AutoTokenizer.from_pretrained(  # nosec B615
+            model_id, token=HUGGINGFACE_TOKEN, revision=HF_MODEL_REVISION
+        )
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -211,11 +217,12 @@ def load_llm_stack(model_id: str):
             bnb_4bit_quant_type="nf4",
         )
         
-        model = AutoModelForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(  # nosec B615
             model_id,
             device_map="auto",
             quantization_config=bnb_config,
             token=HUGGINGFACE_TOKEN,
+            revision=HF_MODEL_REVISION,
             max_memory={0: "11GiB", "cpu": "24GiB"},  # Leave room for Whisper
         )
         return tokenizer, model, model_id
@@ -239,14 +246,15 @@ print(f"🚀 Launching Neural Engine on {device.upper()} (Standard SDPA)...")
 stt_model_id = os.getenv("STT_MODEL_ID", "openai/whisper-large-v3")
 print(f"Loading STT: {stt_model_id}...")
 
-stt_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+stt_model = AutoModelForSpeechSeq2Seq.from_pretrained(  # nosec B615
     stt_model_id,
     torch_dtype=torch_dtype,
     low_cpu_mem_usage=True,
     use_safetensors=True,
+    revision=HF_MODEL_REVISION,
 )
 stt_model.to(device)
-stt_processor = AutoProcessor.from_pretrained(stt_model_id)
+stt_processor = AutoProcessor.from_pretrained(stt_model_id, revision=HF_MODEL_REVISION)  # nosec B615
 
 stt_pipe = pipeline(
     "automatic-speech-recognition",

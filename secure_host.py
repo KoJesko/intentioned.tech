@@ -5,7 +5,9 @@ import ssl
 
 # Port 6942 is for the website (frontend)
 PORT = 6942
-SERVER_ADDRESS = ("0.0.0.0", PORT)
+# Default to localhost for security; use SERVER_HOST env var for Docker/container deployments
+SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+SERVER_ADDRESS = (SERVER_HOST, PORT)
 
 # Ensure certs exist
 if not os.path.exists("key.pem") or not os.path.exists("cert.pem"):

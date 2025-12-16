@@ -25,10 +25,10 @@ jobs:
       - name: Install security tools
         run: |
           python -m pip install --upgrade pip
-          pip install safety bandit
+          pip install pip-audit bandit
       
-      - name: Run safety check
-        run: safety check --file requirements.txt
+      - name: Run pip-audit for vulnerability scanning
+        run: pip-audit -r requirements.txt --strict
       
       - name: Run bandit security linting
-        run: bandit -r . --exclude ./e1 -ll
+        run: bandit -r . --exclude ./node_modules -ll
