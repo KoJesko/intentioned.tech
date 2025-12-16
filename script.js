@@ -4,11 +4,36 @@ const HAS_SECURE_CONTEXT = window.isSecureContext || IS_LOCAL_CONTEXT;
 
 // Auto-detect WebSocket scheme based on page protocol
 const WS_SCHEME = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-// Use port 6942 for HTTPS/WSS, port 3001 for HTTP/WS
-const WS_PORT = window.location.protocol === 'https:' ? 6942 : 3001;
+// If we're behind Cloudflare (or any external HTTPS on 443), do NOT append an explicit port.
+// Otherwise, use explicit ports for direct-host connections.
+const DEFAULT_HTTPS_PORT = 6942;
+const DEFAULT_HTTP_PORT = 3001;
+
+const PAGE_PORT = window.location.port; // '' when default (80/443)
+const IS_HTTPS = window.location.protocol === 'https:';
+const IS_DEFAULT_HTTPS_PORT = IS_HTTPS && (PAGE_PORT === '' || PAGE_PORT === '443');
+
+// Heuristic: external/cloudflare-style access = https + default port + not localhost.
+const IS_EXTERNAL_HTTPS = IS_DEFAULT_HTTPS_PORT && !IS_LOCAL_CONTEXT;
+
+function buildWebSocketUrl() {
+    const host = window.location.hostname;
+
+    if (IS_HTTPS) {
+        // When on standard HTTPS (443 via Cloudflare), the WS endpoint should be wss://host/ws/chat
+        // and Cloudflare will proxy to the origin/port.
+        if (IS_EXTERNAL_HTTPS) {
+            return `${WS_SCHEME}${host}/ws/chat`;
+        }
+        return `${WS_SCHEME}${host}:${DEFAULT_HTTPS_PORT}/ws/chat`;
+    }
+
+    // HTTP dev/local
+    return `${WS_SCHEME}${host}:${DEFAULT_HTTP_PORT}/ws/chat`;
+}
 
 const CONFIG = {
-    WS_URL: `${WS_SCHEME}${window.location.hostname}:${WS_PORT}/ws/chat`, 
+    WS_URL: buildWebSocketUrl(),
     CHUNK_SIZE_MS: 500,
     SAMPLE_RATE: 16000
 };

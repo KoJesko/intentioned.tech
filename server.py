@@ -72,6 +72,7 @@ STT_MAX_NEW_TOKENS = 256
 STT_CHUNK_LENGTH_S = 30
 STT_STRIDE_LENGTH_S = (6, 3)
 
+# Using 8B model - fits on 16GB with 4-bit quantization
 LLM_DEFAULT_MODEL_ID = "NousResearch/Hermes-3-Llama-3.1-8B"
 LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", LLM_DEFAULT_MODEL_ID)
 HUGGINGFACE_TOKEN = os.getenv("HUGGING_FACE_HUB_TOKEN")
@@ -193,11 +194,21 @@ def load_llm_stack(model_id: str):
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
+        # Use BitsAndBytesConfig for 4-bit quantization (new recommended way)
+        from transformers import BitsAndBytesConfig
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+        )
+        
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             device_map="auto",
-            load_in_4bit=True,
+            quantization_config=bnb_config,
             token=HUGGINGFACE_TOKEN,
+            max_memory={0: "11GiB", "cpu": "24GiB"},  # Leave room for Whisper
         )
         return tokenizer, model, model_id
     except Exception as exc:
@@ -216,8 +227,8 @@ torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 print(f"🚀 Launching Neural Engine on {device.upper()} (Standard SDPA)...")
 
 # --- 1. STT MODEL (Whisper) ---
-# Higher quality model (slower but more accurate) since latency budget allows it.
-stt_model_id = "openai/whisper-large-v3"
+# Using large-v3 for best accuracy (cached locally)
+stt_model_id = os.getenv("STT_MODEL_ID", "openai/whisper-large-v3")
 print(f"Loading STT: {stt_model_id}...")
 
 stt_model = AutoModelForSpeechSeq2Seq.from_pretrained(
@@ -375,12 +386,20 @@ async def emit_tts_chunk(
         return normalized
     if apply_delay:
         await asyncio.sleep(TTS_START_DELAY_SECONDS)
+    print(f"🔊 Generating TTS for: {normalized[:50]}...")
     audio_b64 = await generate_audio_chunk(normalized)
     if audio_b64:
-        await websocket.send_json(
-            {"text": normalized, "audio": audio_b64, "status": "streaming"}
-        )
+        print(f"✅ TTS audio generated: {len(audio_b64)} bytes (base64)")
+        try:
+            await websocket.send_json(
+                {"text": normalized, "audio": audio_b64, "status": "streaming"}
+            )
+            print(f"📤 Audio sent successfully")
+        except Exception as e:
+            print(f"❌ Failed to send audio: {e}")
+            raise
         return normalized
+    print(f"⚠️ TTS returned no audio for: {normalized[:50]}")
     return ""
 
 
@@ -394,7 +413,12 @@ async def handle_user_turn(
     if not audio_payload:
         return
 
-    audio_array, sampling_rate = decode_audio_payload(audio_payload, mime_type)
+    try:
+        audio_array, sampling_rate = decode_audio_payload(audio_payload, mime_type)
+    except Exception as e:
+        print(f"⚠️ Error: {e}")
+        await websocket.send_json({"status": "audio-error", "message": "Failed to decode audio"})
+        return
 
     stt_result = stt_pipe({"array": audio_array, "sampling_rate": sampling_rate})
     user_text = aggregate_transcript(stt_result)
