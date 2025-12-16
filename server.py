@@ -61,10 +61,27 @@ async def serve_index():
 
 @app.get("/{filename:path}")
 async def serve_static(filename: str):
-    # Prevent directory traversal via untrusted filename
+    """
+    Serve static files with path traversal protection.
+    
+    Security: Validates that requested files are within PROJECT_ROOT to prevent
+    directory traversal attacks (e.g., ../../etc/passwd).
+    """
+    # Resolve both paths to handle symlinks and relative paths consistently
+    safe_root = PROJECT_ROOT.resolve()
     requested_path = (PROJECT_ROOT / filename).resolve()
-    if not str(requested_path).startswith(str(PROJECT_ROOT)) or not requested_path.is_file():
-        return FileResponse(PROJECT_ROOT / "index.html")
+    
+    # Verify the resolved path is within the safe root directory
+    try:
+        requested_path.relative_to(safe_root)
+    except ValueError:
+        # Path is outside safe_root, return default page
+        return FileResponse(safe_root / "index.html")
+    
+    # Ensure the path exists and is a file (not a directory)
+    if not requested_path.is_file():
+        return FileResponse(safe_root / "index.html")
+    
     return FileResponse(requested_path)
 
 
