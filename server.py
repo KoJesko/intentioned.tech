@@ -61,10 +61,11 @@ async def serve_index():
 
 @app.get("/{filename:path}")
 async def serve_static(filename: str):
-    file_path = PROJECT_ROOT / filename
-    if file_path.exists() and file_path.is_file():
-        return FileResponse(file_path)
-    return FileResponse(PROJECT_ROOT / "index.html")
+    # Prevent directory traversal via untrusted filename
+    requested_path = (PROJECT_ROOT / filename).resolve()
+    if not str(requested_path).startswith(str(PROJECT_ROOT)) or not requested_path.is_file():
+        return FileResponse(PROJECT_ROOT / "index.html")
+    return FileResponse(requested_path)
 
 
 # --- Conversational tuning knobs ---
