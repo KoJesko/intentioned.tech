@@ -83,7 +83,10 @@ async def serve_index():
 async def serve_static(filename: str):
     # Securely resolve the requested path
     try:
-        candidate_path = (PROJECT_ROOT / filename).resolve()
+        # Ensure the provided filename is treated as a relative path segment
+        # Strip any leading path separators so we never interpret it as absolute
+        safe_filename = filename.lstrip("/\\")
+        candidate_path = (PROJECT_ROOT / safe_filename).resolve()
         # Only allow serving files that reside inside PROJECT_ROOT
         try:
             # Use Path.relative_to on resolved paths to enforce containment
@@ -96,7 +99,7 @@ async def serve_static(filename: str):
         if candidate_path.exists() and candidate_path.is_file():
             response = FileResponse(candidate_path)
             # No cache for HTML/JS files to ensure latest version
-            if filename.endswith(('.html', '.js', '.css')):
+            if safe_filename.endswith(('.html', '.js', '.css')):
                 response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
                 response.headers["Pragma"] = "no-cache"
                 response.headers["Expires"] = "0"
