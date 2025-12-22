@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pace AI Research - Voice Assistant</title>
+    <style>
+        :root {
+            --bg-primary: #7ab2ff;
+            --bg-secondary: #5a9cf5;
+            --card-bg: #1a1a2e;
+            --card-secondary: #16213e;
+            --text-primary: #ffffff;
+            --text-secondary: #b8c5d6;
+            --text-muted: #6b7d94;
+            --accent: #4ecdc4;
+            --accent-hover: #3dbdb5;
+            --danger: #ff6b6b;
+            --warning: #ffd93d;
+            --success: #6bcb77;
+            --border-color: rgba(255,255,255,0.1);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text-primary);
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 24px; }
+        .header h1 { font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 700; color: var(--card-bg); margin-bottom: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header p { color: var(--card-secondary); font-size: 1.1rem; font-weight: 500; }
+        .status-bar { display: flex; justify-content: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+        .status-pill { padding: 10px 20px; border-radius: 50px; font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        #status { background: var(--warning); color: #1a1a2e; }
+        #status.connected { background: var(--success); }
+        #status.error { background: var(--danger); color: white; }
+        #reconnectBtn { background: var(--card-bg); color: var(--text-primary); border: none; padding: 10px 20px; border-radius: 50px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; }
+        #reconnectBtn:hover { background: var(--card-secondary); transform: translateY(-2px); }
+        .main-card { background: var(--card-bg); border-radius: 24px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .instructions { background: var(--card-secondary); border-radius: 16px; padding: 20px; margin-bottom: 24px; border-left: 4px solid var(--accent); }
+        .instructions h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 12px; }
+        .instructions ol { margin-left: 20px; color: var(--text-secondary); line-height: 1.8; }
+        .instructions li { margin-bottom: 4px; }
+        .instructions strong { color: var(--text-primary); }
+        .scenario-section { margin-bottom: 24px; }
+        .section-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 12px; font-weight: 600; }
+        .scenario-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+        .scenario-card { background: var(--card-secondary); border: 2px solid var(--border-color); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; text-align: center; }
+        .scenario-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .scenario-card.active { border-color: var(--accent); background: rgba(78, 205, 196, 0.1); }
+        .scenario-card .icon { font-size: 2rem; margin-bottom: 8px; }
+        .scenario-card .title { font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+        .scenario-card .desc { font-size: 0.8rem; color: var(--text-muted); }
+        .control-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .control-item { background: var(--card-secondary); border-radius: 12px; padding: 16px; }
+        .control-item label { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; font-weight: 600; }
+        .control-item select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-primary); font-size: 0.95rem; cursor: pointer; }
+        .control-item select:focus { outline: none; border-color: var(--accent); }
+        #pauseBtn { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--accent); color: var(--card-bg); font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+        #pauseBtn:hover { background: var(--accent-hover); }
+        #pauseBtn.paused { background: var(--warning); }
+        .record-section { text-align: center; padding: 32px 0; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin-bottom: 24px; }
+        #recordBtn { width: 140px; height: 140px; border-radius: 50%; border: none; background: linear-gradient(145deg, var(--danger), #e55555); color: white; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 10px 40px rgba(255, 107, 107, 0.4); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin: 0 auto; }
+        #recordBtn:hover { transform: scale(1.05); box-shadow: 0 15px 50px rgba(255, 107, 107, 0.5); }
+        #recordBtn:active { transform: scale(0.98); background: linear-gradient(145deg, #e55555, #cc4444); }
+        #recordBtn .mic-icon { font-size: 2.5rem; }
+        #recordBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+        #vadStatus { margin-top: 16px; font-size: 0.9rem; color: var(--text-muted); }
+        .visualizer { margin-top: 20px; padding: 16px; background: var(--card-secondary); border-radius: 12px; max-width: 300px; margin-left: auto; margin-right: auto; }
+        .wave-bars { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 60px; }
+        .wave-bar { width: 6px; border-radius: 3px; background: var(--accent); opacity: 0.6; transition: height 0.1s ease; }
+        .chat-section { margin-bottom: 24px; }
+        #chatLog { background: var(--card-secondary); border-radius: 12px; padding: 20px; min-height: 200px; max-height: 300px; overflow-y: auto; }
+        .placeholder { text-align: center; color: var(--text-muted); padding: 40px 20px; }
+        .placeholder .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+        .footer-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+        .info-item { background: var(--card-secondary); border-radius: 10px; padding: 14px; text-align: center; }
+        .info-item .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 4px; }
+        .info-item .value { font-weight: 600; color: var(--text-primary); font-size: 0.9rem; }
+        @media (max-width: 600px) { body { padding: 16px; } .main-card { padding: 20px; } #recordBtn { width: 120px; height: 120px; } .scenario-grid { grid-template-columns: 1fr 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎤 Pace AI Research</h1>
+            <p>Voice-Powered AI Assistant</p>
+        </header>
+        <div class="status-bar">
+            <button id="reconnectBtn">🔄 Reconnect</button>
+            <div id="status" class="status-pill">⏳ Connecting...</div>
+        </div>
+        <div class="main-card">
+            <div class="instructions">
+                <h2>📋 How to Use</h2>
+                <ol>
+                    <li><strong>Select a Scenario</strong> below to set the AI context</li>
+                    <li><strong>Choose Mic Mode:</strong> Push-to-Talk or Voice Activity</li>
+                    <li><strong>Press and Hold</strong> the red microphone button to speak</li>
+                    <li><strong>Release</strong> when done - AI will respond with voice</li>
+                </ol>
+            </div>
+            <div class="scenario-section">
+                <div class="section-label">Select Scenario</div>
+                <div class="scenario-grid">
+                    <div class="scenario-card active" data-scenario="general">
+                        <div class="icon">💬</div>
+                        <div class="title">General Chat</div>
+                        <div class="desc">Open conversation with a friendly AI assistant</div>
+                    </div>
+                    <div class="scenario-card" data-scenario="tutor">
+                        <div class="icon">📚</div>
+                        <div class="title">Study Tutor</div>
+                        <div class="desc">Patient help with homework and learning concepts</div>
+                    </div>
+                    <div class="scenario-card" data-scenario="coding">
+                        <div class="icon">💻</div>
+                        <div class="title">Coding Help</div>
+                        <div class="desc">Debug code and learn programming best practices</div>
+                    </div>
+                    <div class="scenario-card" data-scenario="creative">
+                        <div class="icon">🎨</div>
+                        <div class="title">Creative Writing</div>
+                        <div class="desc">Brainstorm stories, characters, and creative ideas</div>
+                    </div>
+                    <div class="scenario-card" data-scenario="parent-teacher">
+                        <div class="icon">👨‍👩‍👦</div>
+                        <div class="title">Parent Conference</div>
+                        <div class="desc">Practice a parent-teacher meeting for a 2E neurodivergent student</div>
+                    </div>
+                </div>
+                <div id="scenarioDescription" class="scenario-description" style="display:none; margin-top: 16px; padding: 16px; background: rgba(78, 205, 196, 0.1); border-radius: 12px; border-left: 4px solid var(--accent); color: var(--text-secondary); font-size: 0.95rem;"></div>
+            </div>
+            <div class="control-panel">
+                <div class="control-item"><label for="inputModeSelect">Mic Mode</label><select id="inputModeSelect"><option value="ptt">🎤 Push-to-Talk</option><option value="vad">🔊 Voice Activity</option></select></div>
+                <div class="control-item"><label>Audio Playback</label><button id="pauseBtn">⏸️ Pause Audio</button></div>
+                <div class="control-item">
+                    <label>Eye Contact Tracking</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="webcamToggle" style="width: 20px; height: 20px; cursor: pointer;">
+                        <span id="webcamStatus" style="font-size: 0.85rem; color: var(--text-muted);">Disabled</span>
+                    </div>
+                </div>
+            </div>
+            <div class="record-section">
+                <button id="recordBtn"><span class="mic-icon">🎙️</span><span>Hold to Speak</span></button>
+                <div id="vadStatus">Voice Activity: Idle</div>
+                <div class="visualizer"><div class="wave-bars" id="waveBars"><div class="wave-bar" style="height:15px"></div><div class="wave-bar" style="height:25px"></div><div class="wave-bar" style="height:18px"></div><div class="wave-bar" style="height:35px"></div><div class="wave-bar" style="height:20px"></div><div class="wave-bar" style="height:30px"></div><div class="wave-bar" style="height:22px"></div><div class="wave-bar" style="height:28px"></div></div></div>
+            </div>
+            <div class="chat-section">
+                <div class="section-label">Conversation</div>
+                <div id="chatLog"><div class="placeholder"><div class="icon">💭</div><div>Press and hold the microphone button to start talking.</div></div></div>
+            </div>
+            <div style="text-align: center; margin-bottom: 24px;">
+                <button id="endSessionBtn" style="padding: 16px 32px; border-radius: 12px; border: none; background: linear-gradient(145deg, #6366f1, #4f46e5); color: white; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 10px 40px rgba(99, 102, 241, 0.4);">
+                    🏁 End Session & Analyze
+                </button>
+            </div>
+            <div class="footer-info">
+                <div class="info-item"><div class="label">Server</div><div class="value" id="serverHost">-</div></div>
+                <div class="info-item"><div class="label">Protocol</div><div class="value" id="serverProtocol">-</div></div>
+                <div class="info-item"><div class="label">Status</div><div class="value" id="serverStatus">Checking...</div></div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js?v=3"></script>
+    
+    <!-- Analysis Results Modal -->
+    <div id="analysisModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto;">
+        <div style="max-width: 700px; margin: 40px auto; background: var(--card-bg); border-radius: 24px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h2 style="font-size: 1.5rem; color: var(--accent);">📊 Session Analysis</h2>
+                <button id="closeModalBtn" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div id="analysisLoading" style="text-align: center; padding: 40px;">
+                <div style="font-size: 3rem; margin-bottom: 16px;">🔄</div>
+                <div style="color: var(--text-secondary);">Analyzing your conversation...</div>
+            </div>
+            <div id="analysisResults" style="display: none;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div class="metric-card" style="background: var(--card-secondary); border-radius: 12px; padding: 16px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;" id="fillerScore">-</div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">Filler Words</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">(Target: &lt;5)</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--card-secondary); border-radius: 12px; padding: 16px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;" id="pacingScore">-</div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">Pacing</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--card-secondary); border-radius: 12px; padding: 16px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;" id="deliveryScore">-</div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">Delivery</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--card-secondary); border-radius: 12px; padding: 16px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;" id="toneScore">-</div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">Tone</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--card-secondary); border-radius: 12px; padding: 16px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;" id="eyeContactScore">-</div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">Eye Contact</div>
+                    </div>
+                </div>
+                <div style="background: var(--card-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                    <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 12px;">🎯 Filler Words Detected</h3>
+                    <div id="fillerDetails" style="color: var(--text-secondary); font-size: 0.95rem;"></div>
+                </div>
+                <div id="pacingSection" style="background: var(--card-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px; display: none;">
+                    <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 12px;">⏱️ Speech Pacing</h3>
+                    <div id="pacingFeedback" style="color: var(--text-secondary); font-size: 0.95rem;"></div>
+                </div>
+                <div style="background: var(--card-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                    <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 12px;">💬 Delivery & Tone Feedback</h3>
+                    <div id="deliveryFeedback" style="color: var(--text-secondary); font-size: 0.95rem;"></div>
+                </div>
+                <div style="background: var(--card-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                    <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 12px;">⚠️ Microaggression Check</h3>
+                    <div id="microaggressionFeedback" style="color: var(--text-secondary); font-size: 0.95rem;"></div>
+                </div>
+                <div id="eyeContactSection" style="background: var(--card-secondary); border-radius: 12px; padding: 20px; display: none;">
+                    <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 12px;">👁️ Eye Contact Analysis</h3>
+                    <div id="eyeContactFeedback" style="color: var(--text-secondary); font-size: 0.95rem;"></div>
+                </div>
+            </div>
+            <button id="newSessionBtn" style="width: 100%; padding: 16px; border-radius: 12px; border: none; background: var(--accent); color: var(--card-bg); font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 16px;">🔄 Start New Session</button>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('serverHost').textContent = window.location.hostname;
+        document.getElementById('serverProtocol').textContent = window.location.protocol === 'https:' ? 'HTTPS/WSS' : 'HTTP/WS';
+        
+        // Scenario descriptions
+        const scenarioDescriptions = {
+            'general': '💬 <strong>General Chat:</strong> An open-ended conversation with a friendly AI assistant. Ask questions, chat, or just have a casual conversation.',
+            'tutor': '📚 <strong>Study Tutor:</strong> A patient tutor who breaks down concepts step-by-step. Great for homework help, exam prep, or learning new topics.',
+            'coding': '💻 <strong>Coding Help:</strong> A programming assistant that helps debug code, explains concepts, and suggests best practices for any language.',
+            'creative': '🎨 <strong>Creative Writing:</strong> A creative partner for brainstorming stories, developing characters, world-building, and overcoming writer\'s block.',
+            'parent-teacher': '👨‍👩‍👦 <strong>Parent-Teacher Conference:</strong> Practice discussing your 2E (Twice-Exceptional) neurodivergent child with their teacher. The AI plays a concerned parent advocating for both academic challenge and proper accommodations.'
+        };
+        
+        const scenarioDescEl = document.getElementById('scenarioDescription');
+        
+        document.querySelectorAll('.scenario-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                
+                // Show scenario description
+                const scenario = card.dataset.scenario;
+                if (scenarioDescriptions[scenario]) {
+                    scenarioDescEl.innerHTML = scenarioDescriptions[scenario];
+                    scenarioDescEl.style.display = 'block';
+                }
+                
+                // Track for analysis
+                if (typeof currentScenario !== 'undefined') {
+                    currentScenario = scenario;
+                }
+                
+                if (typeof sendControlMessage === 'function') sendControlMessage({ scenario: scenario });
+            });
+        });
+        (function() {
+            const statusEl = document.getElementById('status');
+            const serverStatusEl = document.getElementById('serverStatus');
+            const check = setInterval(() => {
+                if (typeof window.updateStatus === 'function') {
+                    clearInterval(check);
+                    window.updateStatus = function(text) {
+                        statusEl.classList.remove('connected', 'error');
+                        if (text.includes('Connected') || text.includes('Ready')) { statusEl.classList.add('connected'); statusEl.textContent = '✅ ' + text; serverStatusEl.textContent = 'Connected'; }
+                        else if (text.includes('Error') || text.includes('Died') || text.includes('Closed')) { statusEl.classList.add('error'); statusEl.textContent = '❌ ' + text; serverStatusEl.textContent = 'Disconnected'; }
+                        else { statusEl.textContent = '⏳ ' + text; serverStatusEl.textContent = 'Connecting...'; }
+                    };
+                }
+            }, 100);
+        })();
+        let isPausedLocal = false;
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            isPausedLocal = !isPausedLocal;
+            document.getElementById('pauseBtn').textContent = isPausedLocal ? '▶️ Resume Audio' : '⏸️ Pause Audio';
+            document.getElementById('pauseBtn').classList.toggle('paused', isPausedLocal);
+        });
+    </script>
+</body>
+<footer>
+    <div style="text-align: center; padding: 16px; color: var(--text-muted); font-size: 0.9rem;">
+        &copy; 2025 Ari Kotler. All rights reserved. <a href="https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training/blob/master/LICENSE">License</a></div>    
+</footer>
+</html>

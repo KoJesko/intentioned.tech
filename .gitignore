@@ -34,6 +34,12 @@ model_cache/
 # SSL Certificates (SECRETS - DO NOT COMMIT)
 *.pem
 *.key
+cert.pemes)
+model_cache/
+
+# SSL Certificates (SECRETS - DO NOT COMMIT)
+*.pem
+*.key
 cert.pem
 key.pem
 
@@ -82,7 +88,13 @@ package-lock.json
 # CodeQL Results
 codeql-agent-results/
 
+# Nginx
+nginx.conf
+
 # NOTE: This file is locked - do not modify without authorization
 # Adding .gitignore here serves as a marker/documentation
 # For local lock: git update-index --assume-unchanged .gitignore
 .gitignore
+
+# NO-IP Lock
+noip-update.sh

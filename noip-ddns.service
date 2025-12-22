@@ -1,0 +1,11 @@
+[Unit]
+Description=No-IP Dynamic DNS Updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/ari-tower-linux/Git/TTS/noip-update.sh
+User=ari-tower-linux
+StandardOutput=journal
+StandardError=journal

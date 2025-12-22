@@ -3,213 +3,823 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pace AI Research - Voice Assistant</title>
+    <title>Intentioned - Social Training Platform</title>
+    
+    <!-- Face-API.js for eye contact detection (vladmandic fork with better model support) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.min.js"></script>
+    
     <style>
         :root {
-            --bg-primary: #7ab2ff;
-            --bg-secondary: #5a9cf5;
-            --card-bg: #1a1a2e;
-            --card-secondary: #16213e;
-            --text-primary: #ffffff;
-            --text-secondary: #b8c5d6;
-            --text-muted: #6b7d94;
-            --accent: #4ecdc4;
-            --accent-hover: #3dbdb5;
-            --danger: #ff6b6b;
-            --warning: #ffd93d;
-            --success: #6bcb77;
-            --border-color: rgba(255,255,255,0.1);
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --card-bg: #16161f;
+            --card-secondary: #1e1e2a;
+            --card-hover: #252535;
+            --text-primary: #f0f0f5;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --accent: #6366f1;
+            --accent-hover: #5558e0;
+            --accent-light: rgba(99, 102, 241, 0.15);
+            --success: #22c55e;
+            --success-light: rgba(34, 197, 94, 0.15);
+            --warning: #f59e0b;
+            --warning-light: rgba(245, 158, 11, 0.15);
+            --danger: #ef4444;
+            --danger-light: rgba(239, 68, 68, 0.15);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-active: rgba(99, 102, 241, 0.5);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
             min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 24px 32px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+        }
+
+        .header .subtitle {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
             padding: 24px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .card-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        /* Scenario Selector */
+        .scenario-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .scenario-btn {
+            background: var(--card-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 14px;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .scenario-btn:hover {
+            background: var(--card-hover);
             color: var(--text-primary);
         }
-        .container { max-width: 900px; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 24px; }
-        .header h1 { font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 700; color: var(--card-bg); margin-bottom: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .header p { color: var(--card-secondary); font-size: 1.1rem; font-weight: 500; }
-        .status-bar { display: flex; justify-content: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-        .status-pill { padding: 10px 20px; border-radius: 50px; font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-        #status { background: var(--warning); color: #1a1a2e; }
-        #status.connected { background: var(--success); }
-        #status.error { background: var(--danger); color: white; }
-        #reconnectBtn { background: var(--card-bg); color: var(--text-primary); border: none; padding: 10px 20px; border-radius: 50px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; }
-        #reconnectBtn:hover { background: var(--card-secondary); transform: translateY(-2px); }
-        .main-card { background: var(--card-bg); border-radius: 24px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        .instructions { background: var(--card-secondary); border-radius: 16px; padding: 20px; margin-bottom: 24px; border-left: 4px solid var(--accent); }
-        .instructions h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 12px; }
-        .instructions ol { margin-left: 20px; color: var(--text-secondary); line-height: 1.8; }
-        .instructions li { margin-bottom: 4px; }
-        .instructions strong { color: var(--text-primary); }
-        .scenario-section { margin-bottom: 24px; }
-        .section-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 12px; font-weight: 600; }
-        .scenario-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-        .scenario-card { background: var(--card-secondary); border: 2px solid var(--border-color); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; text-align: center; }
-        .scenario-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-        .scenario-card.active { border-color: var(--accent); background: rgba(78, 205, 196, 0.1); }
-        .scenario-card .icon { font-size: 2rem; margin-bottom: 8px; }
-        .scenario-card .title { font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-        .scenario-card .desc { font-size: 0.8rem; color: var(--text-muted); }
-        .control-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .control-item { background: var(--card-secondary); border-radius: 12px; padding: 16px; }
-        .control-item label { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; font-weight: 600; }
-        .control-item select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-primary); font-size: 0.95rem; cursor: pointer; }
-        .control-item select:focus { outline: none; border-color: var(--accent); }
-        #pauseBtn { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--accent); color: var(--card-bg); font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
-        #pauseBtn:hover { background: var(--accent-hover); }
-        #pauseBtn.paused { background: var(--warning); }
-        .record-section { text-align: center; padding: 32px 0; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin-bottom: 24px; }
-        #recordBtn { width: 140px; height: 140px; border-radius: 50%; border: none; background: linear-gradient(145deg, var(--danger), #e55555); color: white; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 10px 40px rgba(255, 107, 107, 0.4); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin: 0 auto; }
-        #recordBtn:hover { transform: scale(1.05); box-shadow: 0 15px 50px rgba(255, 107, 107, 0.5); }
-        #recordBtn:active { transform: scale(0.98); background: linear-gradient(145deg, #e55555, #cc4444); }
-        #recordBtn .mic-icon { font-size: 2.5rem; }
-        #recordBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-        #vadStatus { margin-top: 16px; font-size: 0.9rem; color: var(--text-muted); }
-        .visualizer { margin-top: 20px; padding: 16px; background: var(--card-secondary); border-radius: 12px; max-width: 300px; margin-left: auto; margin-right: auto; }
-        .wave-bars { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 60px; }
-        .wave-bar { width: 6px; border-radius: 3px; background: var(--accent); opacity: 0.6; transition: height 0.1s ease; }
-        .chat-section { margin-bottom: 24px; }
-        #chatLog { background: var(--card-secondary); border-radius: 12px; padding: 20px; min-height: 200px; max-height: 300px; overflow-y: auto; }
-        .placeholder { text-align: center; color: var(--text-muted); padding: 40px 20px; }
-        .placeholder .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
-        .footer-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-        .info-item { background: var(--card-secondary); border-radius: 10px; padding: 14px; text-align: center; }
-        .info-item .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 4px; }
-        .info-item .value { font-weight: 600; color: var(--text-primary); font-size: 0.9rem; }
-        @media (max-width: 600px) { body { padding: 16px; } .main-card { padding: 20px; } #recordBtn { width: 120px; height: 120px; } .scenario-grid { grid-template-columns: 1fr 1fr; } }
+
+        .scenario-btn.active {
+            background: var(--accent-light);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .scenario-btn .label {
+            font-weight: 500;
+            display: block;
+        }
+
+        .scenario-btn .desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Controls Card */
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .control-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .control-btn.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .control-btn.primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .control-btn.secondary {
+            background: var(--card-secondary);
+            color: var(--text-secondary);
+        }
+
+        .control-btn.secondary:hover {
+            background: var(--card-hover);
+            color: var(--text-primary);
+        }
+
+        .control-btn.danger {
+            background: var(--danger);
+            border-color: var(--danger);
+            color: white;
+        }
+
+        .control-btn.danger:hover {
+            background: #dc2626;
+        }
+
+        .control-btn.full-width {
+            grid-column: span 2;
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Toggle Buttons */
+        .toggle-group {
+            display: flex;
+            background: var(--card-secondary);
+            border-radius: 8px;
+            padding: 4px;
+            gap: 4px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .toggle-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .toggle-btn:hover:not(.active) {
+            color: var(--text-primary);
+        }
+
+        /* Webcam Preview */
+        .webcam-container {
+            position: relative;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+        }
+
+        #webcamPreview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .webcam-overlay {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .eye-contact-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 20px;
+            font-size: 0.7rem;
+        }
+
+        .eye-contact-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background 0.3s ease;
+        }
+
+        .eye-contact-dot.active {
+            background: var(--success);
+        }
+
+        /* Main Content */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Chat Container */
+        .chat-container {
+            flex: 1;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            min-height: 500px;
+        }
+
+        .chat-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h2 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: var(--card-secondary);
+            border-radius: 20px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-badge.connected .status-dot {
+            background: var(--success);
+        }
+
+        .status-badge.recording .status-dot {
+            background: var(--danger);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .message.user {
+            background: var(--accent);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant {
+            background: var(--card-secondary);
+            color: var(--text-primary);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message .role {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+
+        /* VAD Status */
+        .vad-status {
+            padding: 12px 20px;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .vad-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: all 0.2s ease;
+        }
+
+        .vad-indicator.speaking {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        /* Analysis Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            max-width: 700px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        /* Overall Score Circle */
+        .score-section {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .score-circle {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: conic-gradient(var(--accent) var(--score-percent, 0%), var(--card-secondary) 0%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            position: relative;
+        }
+
+        .score-circle::before {
+            content: '';
+            position: absolute;
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            background: var(--card-bg);
+        }
+
+        .score-value {
+            position: relative;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .score-value span {
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        .score-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* Analysis Grid */
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .analysis-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .analysis-card {
+            background: var(--card-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .analysis-card.full-width {
+            grid-column: span 2;
+        }
+
+        @media (max-width: 600px) {
+            .analysis-card.full-width {
+                grid-column: span 1;
+            }
+        }
+
+        .analysis-card h4 {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .analysis-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .analysis-card .rating {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .rating.excellent {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .rating.good {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .rating.fair {
+            background: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .rating.needs-work {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .analysis-card .feedback {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .analysis-card .suggestion {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Filler Words List */
+        .filler-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .filler-tag {
+            padding: 4px 10px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* AI Summary */
+        .ai-summary {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        /* Loading State */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Icons (simple CSS-based) */
+        .icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+        }
     </style>
 </head>
 <body>
+    <header class="header">
+        <h1>Intentioned: A Self-Hosted and Modular AGPL Licensed Social Training Application</h1>
+        <p class="subtitle">Practice conversations, improve communication skills, and receive real-time feedback</p>
+    </header>
+
     <div class="container">
-        <header class="header">
-            <h1>🎤 Pace AI Research</h1>
-            <p>Voice-Powered AI Assistant</p>
-        </header>
-        <div class="status-bar">
-            <button id="reconnectBtn">🔄 Reconnect</button>
-            <div id="status" class="status-pill">⏳ Connecting...</div>
-        </div>
-        <div class="main-card">
-            <div class="instructions">
-                <h2>📋 How to Use</h2>
-                <ol>
-                    <li><strong>Select a Scenario</strong> below to set the AI context</li>
-                    <li><strong>Choose Mic Mode:</strong> Push-to-Talk or Voice Activity</li>
-                    <li><strong>Press and Hold</strong> the red microphone button to speak</li>
-                    <li><strong>Release</strong> when done - AI will respond with voice</li>
-                </ol>
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Scenario Selection -->
+            <div class="card">
+                <h3 class="card-title">Training Scenario</h3>
+                <div class="scenario-list">
+                    <button class="scenario-btn active" data-scenario="general">
+                        <span class="label">💬 General Assistant</span>
+                        <span class="desc">Free-form conversation practice</span>
+                    </button>
+                    <button class="scenario-btn" data-scenario="tutor">
+                        <span class="label">📚 Study Tutor</span>
+                        <span class="desc">Academic help and explanations</span>
+                    </button>
+                    <button class="scenario-btn" data-scenario="coding">
+                        <span class="label">💻 Coding Assistant</span>
+                        <span class="desc">Programming help and debugging</span>
+                    </button>
+                    <button class="scenario-btn" data-scenario="creative">
+                        <span class="label">✨ Creative Partner</span>
+                        <span class="desc">Writing and brainstorming</span>
+                    </button>
+                    <button class="scenario-btn" data-scenario="parent-teacher">
+                        <span class="label">🎓 Parent-Teacher Conference</span>
+                        <span class="desc">Practice difficult conversations</span>
+                    </button>
+                </div>
             </div>
-            <div class="scenario-section">
-                <div class="section-label">Select Scenario</div>
-                <div class="scenario-grid">
-                    <div class="scenario-card active" data-scenario="general">
-                        <div class="icon">💬</div>
-                        <div class="title">General Chat</div>
-                        <div class="desc">Open conversation with a friendly AI assistant</div>
-                    </div>
-                    <div class="scenario-card" data-scenario="tutor">
-                        <div class="icon">📚</div>
-                        <div class="title">Study Tutor</div>
-                        <div class="desc">Patient help with homework and learning concepts</div>
-                    </div>
-                    <div class="scenario-card" data-scenario="coding">
-                        <div class="icon">💻</div>
-                        <div class="title">Coding Help</div>
-                        <div class="desc">Debug code and learn programming best practices</div>
-                    </div>
-                    <div class="scenario-card" data-scenario="creative">
-                        <div class="icon">🎨</div>
-                        <div class="title">Creative Writing</div>
-                        <div class="desc">Brainstorm stories, characters, and creative ideas</div>
-                    </div>
-                    <div class="scenario-card" data-scenario="parent-teacher">
-                        <div class="icon">👨‍👩‍👦</div>
-                        <div class="title">Parent Conference</div>
-                        <div class="desc">Practice a parent-teacher meeting for a 2E neurodivergent student</div>
+
+            <!-- Controls -->
+            <div class="card">
+                <h3 class="card-title">Input Mode</h3>
+                <div class="toggle-group" id="modeToggle">
+                    <button class="toggle-btn active" data-mode="vad">Voice Activity</button>
+                    <button class="toggle-btn" data-mode="ptt">Push-to-Talk</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Controls</h3>
+                <div class="controls-grid">
+                    <button id="recordBtn" class="control-btn primary">
+                        🎤 Record
+                    </button>
+                    <button id="muteBtn" class="control-btn secondary">
+                        🔊 Mute AI
+                    </button>
+                    <button id="resetBtn" class="control-btn secondary">
+                        🔄 Reset
+                    </button>
+                    <button id="webcamBtn" class="control-btn secondary">
+                        📷 Webcam
+                    </button>
+                    <button id="endSessionBtn" class="control-btn danger full-width">
+                        📊 End Session & Analyze
+                    </button>
+                </div>
+            </div>
+
+            <!-- Webcam Preview -->
+            <div class="card" id="webcamCard" style="display: none;">
+                <h3 class="card-title">Eye Contact Tracking</h3>
+                <div class="webcam-container">
+                    <video id="webcamPreview" autoplay playsinline muted></video>
+                    <div class="webcam-overlay">
+                        <div class="eye-contact-indicator">
+                            <div class="eye-contact-dot" id="eyeContactDot"></div>
+                            <span id="eyeContactLabel">Not tracking</span>
+                        </div>
                     </div>
                 </div>
-                <div id="scenarioDescription" class="scenario-description" style="display:none; margin-top: 16px; padding: 16px; background: rgba(78, 205, 196, 0.1); border-radius: 12px; border-left: 4px solid var(--accent); color: var(--text-secondary); font-size: 0.95rem;"></div>
             </div>
-            <div class="control-panel">
-                <div class="control-item"><label for="inputModeSelect">Mic Mode</label><select id="inputModeSelect"><option value="ptt">🎤 Push-to-Talk</option><option value="vad">🔊 Voice Activity</option></select></div>
-                <div class="control-item"><label>Audio Playback</label><button id="pauseBtn">⏸️ Pause Audio</button></div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2>Conversation</h2>
+                    <div class="status-badge" id="statusBadge">
+                        <div class="status-dot"></div>
+                        <span id="statusText">Connecting...</span>
+                    </div>
+                </div>
+                <div class="chat-messages" id="chatLog">
+                    <!-- Messages will be added here -->
+                </div>
+                <div class="vad-status" id="vadStatus">
+                    <div class="vad-indicator" id="vadIndicator"></div>
+                    <span id="vadStatusText">Voice Activity: idle</span>
+                </div>
             </div>
-            <div class="record-section">
-                <button id="recordBtn"><span class="mic-icon">🎙️</span><span>Hold to Speak</span></button>
-                <div id="vadStatus">Voice Activity: Idle</div>
-                <div class="visualizer"><div class="wave-bars" id="waveBars"><div class="wave-bar" style="height:15px"></div><div class="wave-bar" style="height:25px"></div><div class="wave-bar" style="height:18px"></div><div class="wave-bar" style="height:35px"></div><div class="wave-bar" style="height:20px"></div><div class="wave-bar" style="height:30px"></div><div class="wave-bar" style="height:22px"></div><div class="wave-bar" style="height:28px"></div></div></div>
+        </main>
+    </div>
+
+    <!-- Analysis Modal -->
+    <div class="modal-overlay" id="analysisModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Session Analysis</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
             </div>
-            <div class="chat-section">
-                <div class="section-label">Conversation</div>
-                <div id="chatLog"><div class="placeholder"><div class="icon">💭</div><div>Press and hold the microphone button to start talking.</div></div></div>
-            </div>
-            <div class="footer-info">
-                <div class="info-item"><div class="label">Server</div><div class="value" id="serverHost">-</div></div>
-                <div class="info-item"><div class="label">Protocol</div><div class="value" id="serverProtocol">-</div></div>
-                <div class="info-item"><div class="label">Status</div><div class="value" id="serverStatus">Checking...</div></div>
+            <div class="modal-body" id="analysisContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>Analyzing your session...</span>
+                </div>
             </div>
         </div>
     </div>
-    <script src="script.js"></script>
-    <script>
-        document.getElementById('serverHost').textContent = window.location.hostname;
-        document.getElementById('serverProtocol').textContent = window.location.protocol === 'https:' ? 'HTTPS/WSS' : 'HTTP/WS';
-        
-        // Scenario descriptions
-        const scenarioDescriptions = {
-            'general': '💬 <strong>General Chat:</strong> An open-ended conversation with a friendly AI assistant. Ask questions, chat, or just have a casual conversation.',
-            'tutor': '📚 <strong>Study Tutor:</strong> A patient tutor who breaks down concepts step-by-step. Great for homework help, exam prep, or learning new topics.',
-            'coding': '💻 <strong>Coding Help:</strong> A programming assistant that helps debug code, explains concepts, and suggests best practices for any language.',
-            'creative': '🎨 <strong>Creative Writing:</strong> A creative partner for brainstorming stories, developing characters, world-building, and overcoming writer\'s block.',
-            'parent-teacher': '👨‍👩‍👦 <strong>Parent-Teacher Conference:</strong> Practice discussing your 2E (Twice-Exceptional) neurodivergent child with their teacher. The AI plays a concerned parent advocating for both academic challenge and proper accommodations.'
-        };
-        
-        const scenarioDescEl = document.getElementById('scenarioDescription');
-        
-        document.querySelectorAll('.scenario-card').forEach(card => {
-            card.addEventListener('click', () => {
-                document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active'));
-                card.classList.add('active');
-                
-                // Show scenario description
-                const scenario = card.dataset.scenario;
-                if (scenarioDescriptions[scenario]) {
-                    scenarioDescEl.innerHTML = scenarioDescriptions[scenario];
-                    scenarioDescEl.style.display = 'block';
-                }
-                
-                if (typeof sendControlMessage === 'function') sendControlMessage({ scenario: scenario });
-            });
-        });
-        (function() {
-            const statusEl = document.getElementById('status');
-            const serverStatusEl = document.getElementById('serverStatus');
-            const check = setInterval(() => {
-                if (typeof window.updateStatus === 'function') {
-                    clearInterval(check);
-                    window.updateStatus = function(text) {
-                        statusEl.classList.remove('connected', 'error');
-                        if (text.includes('Connected') || text.includes('Ready')) { statusEl.classList.add('connected'); statusEl.textContent = '✅ ' + text; serverStatusEl.textContent = 'Connected'; }
-                        else if (text.includes('Error') || text.includes('Died') || text.includes('Closed')) { statusEl.classList.add('error'); statusEl.textContent = '❌ ' + text; serverStatusEl.textContent = 'Disconnected'; }
-                        else { statusEl.textContent = '⏳ ' + text; serverStatusEl.textContent = 'Connecting...'; }
-                    };
-                }
-            }, 100);
-        })();
-        let isPausedLocal = false;
-        document.getElementById('pauseBtn').addEventListener('click', () => {
-            isPausedLocal = !isPausedLocal;
-            document.getElementById('pauseBtn').textContent = isPausedLocal ? '▶️ Resume Audio' : '⏸️ Pause Audio';
-            document.getElementById('pauseBtn').classList.toggle('paused', isPausedLocal);
-        });
-    </script>
+
+    <!-- License Footer -->
+    <footer style="
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--bg-darker);
+        border-top: 1px solid var(--border);
+        padding: 8px 16px;
+        text-align: center;
+        font-size: 12px;
+        color: var(--text-muted);
+        z-index: 100;
+    ">
+        <span>Licensed under </span>
+        <a href="https://www.gnu.org/licenses/agpl-3.0.html" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           style="color: var(--primary); text-decoration: none;">
+            AGPL-3.0
+        </a>
+        <span> • </span>
+        <a href="https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           style="color: var(--primary); text-decoration: none;">
+            View Source on GitHub
+        </a>
+    </footer>
+
+    <script src="script.js?v=10"></script>
 </body>
-<footer>
-    <div style="text-align: center; padding: 16px; color: var(--text-muted); font-size: 0.9rem;">
-        &copy; 2025 Ari Kotler. All rights reserved. <a href="https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training/blob/master/LICENSE">License</a></div>    
-</footer>
 </html>

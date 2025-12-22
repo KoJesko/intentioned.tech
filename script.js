@@ -43,9 +43,12 @@ const MODES = {
     VAD: 'vad'
 };
 
-const VAD_THRESHOLD = 0.015;
-const VAD_RELEASE_MS = 1200;
-const VAD_MIN_ACTIVE_MS = 200;
+// Improved VAD settings for better detection
+const VAD_THRESHOLD = 0.02;      // Increased sensitivity threshold (was 0.015)
+const VAD_RELEASE_MS = 1500;     // Time to wait after voice stops before ending capture (was 1200)
+const VAD_MIN_ACTIVE_MS = 300;   // Minimum speaking duration before we consider it speech (was 200)
+const VAD_SMOOTHING_FRAMES = 3;  // Number of frames to average for smoother detection
+let vadSmoothingBuffer = [];
 
 // State
 let socket = null;
@@ -60,6 +63,22 @@ let inputMode = MODES.PTT;
 let isPaused = false;
 let micWarningShown = false;
 
+// Session tracking for analysis
+let conversationTranscript = [];  // Store {role, content} pairs
+let currentScenario = 'general';
+let speechTimestamps = [];  // Track {start, end} of each speech segment
+let currentSpeechStart = null;  // Track when user starts speaking
+
+// Response time tracking (time between AI done speaking and user starts speaking)
+let aiSpeechEndTime = null;  // Timestamp when AI finishes speaking
+let responseTimes = [];  // Array of response times in seconds
+
+// Webcam / Eye Contact state
+let webcamEnabled = false;
+let webcamStream = null;
+let eyeContactData = [];
+let eyeContactInterval = null;
+
 // Voice Activity state
 let vadAudioContext = null;
 let vadSource = null;
@@ -72,31 +91,36 @@ let vadRecording = false;
 let vadSpeechStart = 0;
 let vadLastVoiceTs = 0;
 
-// DOM Elements
-const statusEl = document.getElementById('status');
+// DOM Elements - updated for new professional UI
+const statusEl = document.getElementById('statusText');
+const statusBadge = document.getElementById('statusBadge');
 const recordBtn = document.getElementById('recordBtn');
 const chatLog = document.getElementById('chatLog');
-const inputModeSelect = document.getElementById('inputModeSelect');
-const pauseBtn = document.getElementById('pauseBtn');
-const vadStatusEl = document.getElementById('vadStatus');
+const muteBtn = document.getElementById('muteBtn');
+const resetBtn = document.getElementById('resetBtn');
+const webcamBtn = document.getElementById('webcamBtn');
+const vadStatusEl = document.getElementById('vadStatusText');
+const vadIndicator = document.getElementById('vadIndicator');
 
 function init() {
+    console.log('=== init() STARTING ===');
     validateMicrophoneSupport();
     initWebSocket();
     setupUI();
+    console.log('=== setupUI() COMPLETED ===');
     updateRecordButtonForMode();
-    updatePauseButton();
     setVadStatus(null);
+    console.log('=== init() COMPLETED ===');
 }
 
 function initWebSocket() {
-    updateStatus('Connecting...', 'text-yellow-500');
+    updateStatus('Connecting...');
     
     socket = new WebSocket(CONFIG.WS_URL);
 
     socket.onopen = (e) => {
         console.log("[open] Connection established to " + CONFIG.WS_URL);
-        updateStatus('Connected (Ready)', 'text-green-500');
+        updateStatus('Connected', 'connected');
         sendControlMessage({ ttsMuted: isPaused });
     };
 
@@ -104,7 +128,12 @@ function initWebSocket() {
         try {
             const response = JSON.parse(event.data);
             
-            // Handle Text Response (The Chat Log)
+            // Handle User's transcribed text
+            if (response.user_text) {
+                appendChat('You', response.user_text);
+            }
+            
+            // Handle AI Text Response (The Chat Log)
             if (response.text) {
                 appendChat('AI', response.text);
             }
@@ -119,6 +148,10 @@ function initWebSocket() {
             if (response.status === 'complete') {
                 console.log("AI turn complete");
             }
+            
+            if (response.status === 'no-speech') {
+                console.log("No speech detected in audio");
+            }
 
         } catch (error) {
             console.error("Error parsing message:", error);
@@ -127,22 +160,22 @@ function initWebSocket() {
 
     socket.onclose = (event) => {
         if (event.wasClean) {
-            updateStatus(`Closed cleanly, code=${event.code}`, 'text-gray-500');
+            updateStatus(`Disconnected`);
         } else {
-            updateStatus('Connection Died', 'text-red-500');
+            updateStatus('Connection Lost');
             // Optional: Auto-reconnect logic could go here
         }
     };
 
     socket.onerror = (error) => {
         console.error(`[error] ${error.message}`);
-        updateStatus('Error', 'text-red-600');
+        updateStatus('Error');
     };
 }
 
 function reconnect() {
     console.log("[reconnect] Attempting to reconnect...");
-    updateStatus('Reconnecting...', 'text-yellow-500');
+    updateStatus('Reconnecting...');
     
     // Close existing socket if open
     if (socket) {
@@ -168,6 +201,20 @@ async function startRecording() {
         return;
     }
 
+    // Track speech start time for pacing analysis
+    currentSpeechStart = Date.now() / 1000;  // in seconds
+    
+    // Calculate response time (time since AI finished speaking)
+    if (aiSpeechEndTime !== null) {
+        const responseTime = currentSpeechStart - aiSpeechEndTime;
+        // Only count reasonable response times (0.1s to 60s)
+        if (responseTime > 0.1 && responseTime < 60) {
+            responseTimes.push(responseTime);
+            console.log(`Response time: ${responseTime.toFixed(2)}s`);
+        }
+        aiSpeechEndTime = null;  // Reset for next measurement
+    }
+
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         activeStream = stream;
@@ -189,8 +236,9 @@ async function startRecording() {
             await transmitRecording();
         };
 
-        // Slice audio into small chunks for streaming upload
-        mediaRecorder.start(CONFIG.CHUNK_SIZE_MS); 
+        // Record continuously without timeslice to get valid WebM container
+        // The complete file is delivered on stop() as a single chunk
+        mediaRecorder.start(); 
         isRecording = true;
         updateRecordButtonForMode();
 
@@ -202,19 +250,19 @@ async function startRecording() {
 
 function validateMicrophoneSupport(showAlert = false) {
     if (!HAS_SECURE_CONTEXT) {
-        const message = 'Microphone access requires HTTPS or localhost. Please visit https://pascacktechnology.ddns.net or use localhost with a secure tunnel.';
-        updateStatus(message, 'text-red-500');
+        const message = 'Microphone access requires HTTPS or localhost.';
+        updateStatus(message);
         if (showAlert && !micWarningShown) {
-            alert(message);
+            alert('Microphone access requires HTTPS or localhost. Please use a secure connection.');
             micWarningShown = true;
         }
         return false;
     }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const message = 'This browser does not support navigator.mediaDevices.getUserMedia. Please use a modern browser like Chrome or Edge.';
-        updateStatus(message, 'text-red-500');
+        const message = 'Microphone not supported';
+        updateStatus(message);
         if (showAlert && !micWarningShown) {
-            alert(message);
+            alert('This browser does not support microphone access. Please use Chrome or Edge.');
             micWarningShown = true;
         }
         return false;
@@ -224,6 +272,16 @@ function validateMicrophoneSupport(showAlert = false) {
 
 function stopRecording() {
     if (mediaRecorder && isRecording) {
+        // Track speech end time for pacing analysis
+        if (currentSpeechStart !== null) {
+            const speechEnd = Date.now() / 1000;  // in seconds
+            speechTimestamps.push({
+                start: currentSpeechStart,
+                end: speechEnd
+            });
+            currentSpeechStart = null;
+        }
+        
         mediaRecorder.stop();
         if (activeStream) {
             activeStream.getTracks().forEach(track => track.stop());
@@ -290,6 +348,9 @@ async function queueAudio(base64String) {
 function playNextChunk() {
     if (audioQueue.length === 0) {
         isPlaying = false;
+        // Record when AI finishes speaking for response time measurement
+        aiSpeechEndTime = Date.now() / 1000;
+        console.log('AI finished speaking at:', aiSpeechEndTime);
         return;
     }
 
@@ -305,6 +366,7 @@ function playNextChunk() {
 // --- UI Helpers ---
 
 function setupUI() {
+    // Record button (for PTT mode)
     if (recordBtn) {
         recordBtn.addEventListener('mousedown', () => {
             if (inputMode === MODES.PTT) startRecording();
@@ -325,18 +387,99 @@ function setupUI() {
         });
     }
 
-    if (inputModeSelect) {
-        inputModeSelect.addEventListener('change', handleModeChange);
+    // Mode toggle buttons (VAD vs PTT)
+    const modeToggle = document.getElementById('modeToggle');
+    if (modeToggle) {
+        modeToggle.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                modeToggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                if (mode === 'vad') {
+                    inputMode = MODES.VAD;
+                    startVAD();
+                } else {
+                    inputMode = MODES.PTT;
+                    stopVAD();
+                }
+                updateRecordButtonForMode();
+            });
+        });
     }
 
-    if (pauseBtn) {
-        pauseBtn.addEventListener('click', togglePausePlayback);
+    // Mute button
+    if (muteBtn) {
+        muteBtn.addEventListener('click', toggleMute);
     }
 
-    // Reconnect button
-    const reconnectBtn = document.getElementById('reconnectBtn');
-    if (reconnectBtn) {
-        reconnectBtn.addEventListener('click', reconnect);
+    // Reset button
+    if (resetBtn) {
+        resetBtn.addEventListener('click', startNewSession);
+    }
+
+    // Webcam button
+    if (webcamBtn) {
+        webcamBtn.addEventListener('click', toggleWebcam);
+    }
+
+    // Scenario buttons
+    document.querySelectorAll('.scenario-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const scenario = btn.dataset.scenario;
+            currentScenario = scenario;
+            sendControlMessage({ scenario });
+        });
+    });
+    
+    // End Session button
+    const endSessionBtn = document.getElementById('endSessionBtn');
+    console.log('End Session Button found:', endSessionBtn);
+    if (endSessionBtn) {
+        endSessionBtn.addEventListener('click', endSessionAndAnalyze);
+        console.log('End Session click listener attached');
+    } else {
+        console.error('End Session Button NOT FOUND!');
+    }
+    
+    // Modal close button
+    const closeModalBtn = document.getElementById('closeModal');
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', () => {
+            document.getElementById('analysisModal').classList.remove('active');
+        });
+    }
+    
+    // Click outside modal to close
+    const modalOverlay = document.getElementById('analysisModal');
+    if (modalOverlay) {
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                modalOverlay.classList.remove('active');
+            }
+        });
+    }
+}
+
+// Toggle mute function
+let isMuted = false;
+function toggleMute() {
+    isMuted = !isMuted;
+    if (muteBtn) {
+        muteBtn.textContent = isMuted ? '🔇 Unmute AI' : '🔊 Mute AI';
+    }
+    sendControlMessage({ mute: isMuted });
+}
+
+// Toggle webcam function
+let webcamActive = false;
+function toggleWebcam() {
+    if (webcamActive) {
+        disableWebcam();
+    } else {
+        enableWebcam();
     }
 }
 
@@ -347,34 +490,37 @@ function sendControlMessage(payload = {}) {
     socket.send(JSON.stringify({ type: 'control', ...payload }));
 }
 
-function updateStatus(text, colorClass) {
+function updateStatus(text, state = 'default') {
     if (statusEl) {
         statusEl.textContent = text;
-        statusEl.className = `text-sm font-bold ${colorClass}`;
+    }
+    if (statusBadge) {
+        statusBadge.classList.remove('connected', 'recording', 'error');
+        if (state === 'connected') {
+            statusBadge.classList.add('connected');
+        } else if (state === 'recording') {
+            statusBadge.classList.add('recording');
+        }
     }
 }
 
 function updateRecordButtonForMode() {
     if (!recordBtn) return;
 
-    recordBtn.disabled = inputMode === MODES.VAD;
-    recordBtn.classList.remove('cursor-not-allowed', 'opacity-80');
-
     if (inputMode === MODES.PTT) {
-        recordBtn.classList.remove('bg-gray-700');
+        recordBtn.disabled = false;
         if (isRecording) {
-            recordBtn.classList.remove('bg-blue-600');
-            recordBtn.classList.add('bg-red-600', 'animate-pulse');
-            recordBtn.textContent = 'Release to Send';
+            recordBtn.innerHTML = '🔴 Recording...';
+            recordBtn.classList.remove('primary');
+            recordBtn.classList.add('danger');
         } else {
-            recordBtn.classList.remove('bg-red-600', 'animate-pulse');
-            recordBtn.classList.add('bg-blue-600');
-            recordBtn.textContent = 'Hold to Speak';
+            recordBtn.innerHTML = '🎤 Hold to Speak';
+            recordBtn.classList.remove('danger');
+            recordBtn.classList.add('primary');
         }
     } else {
-        recordBtn.classList.remove('bg-blue-600', 'bg-red-600', 'animate-pulse');
-        recordBtn.classList.add('bg-gray-700', 'cursor-not-allowed', 'opacity-80');
-        recordBtn.textContent = vadRecording ? 'Listening (Voice Activity)' : 'Voice Activity Enabled';
+        recordBtn.disabled = true;
+        recordBtn.innerHTML = '🎤 VAD Active';
     }
 }
 
@@ -387,12 +533,8 @@ function updatePauseButton() {
 
 async function togglePausePlayback() {
     isPaused = !isPaused;
-    updatePauseButton();
 
     if (!audioContext) {
-        if (isPaused) {
-            updateStatus('Playback paused (will resume when audio starts)', 'text-yellow-400');
-        }
         sendControlMessage({ ttsMuted: isPaused });
         return;
     }
@@ -460,11 +602,8 @@ async function enableVadMode() {
         setVadStatus('listening');
     } catch (error) {
         console.error('Failed to enable VAD mode', error);
-        updateStatus('VAD Error (microphone unavailable)', 'text-red-500');
+        updateStatus('Microphone Error');
         inputMode = MODES.PTT;
-        if (inputModeSelect) {
-            inputModeSelect.value = MODES.PTT;
-        }
         disableVadMode();
         updateRecordButtonForMode();
     }
@@ -500,6 +639,7 @@ function disableVadMode() {
     }
     vadChunks = [];
     vadRecording = false;
+    vadSmoothingBuffer = [];
     setVadStatus(null);
 }
 
@@ -512,8 +652,15 @@ function handleVadAudio(event) {
     }
     const rms = Math.sqrt(sumSquares / inputBuffer.length);
     const now = performance.now();
+    
+    // Apply smoothing to reduce false triggers
+    vadSmoothingBuffer.push(rms);
+    if (vadSmoothingBuffer.length > VAD_SMOOTHING_FRAMES) {
+        vadSmoothingBuffer.shift();
+    }
+    const smoothedRms = vadSmoothingBuffer.reduce((a, b) => a + b, 0) / vadSmoothingBuffer.length;
 
-    if (rms > VAD_THRESHOLD) {
+    if (smoothedRms > VAD_THRESHOLD) {
         vadLastVoiceTs = now;
         if (!vadRecording && vadRecorder?.state === 'inactive') {
             startVadCapture(now);
@@ -522,21 +669,52 @@ function handleVadAudio(event) {
         }
     } else if (vadRecording && now - vadLastVoiceTs > VAD_RELEASE_MS && now - vadSpeechStart > VAD_MIN_ACTIVE_MS) {
         stopVadCapture();
+    } else if (!vadRecording) {
+        // Show listening status when not recording
+        setVadStatus('listening');
     }
 }
 
 function startVadCapture(startTimestamp) {
     if (!vadRecorder || vadRecorder.state !== 'inactive') return;
     vadChunks = [];
-    vadRecorder.start(CONFIG.CHUNK_SIZE_MS);
+    // Don't use timeslice - record continuously and get complete file on stop()
+    // This ensures we get a valid WebM container with proper headers
+    vadRecorder.start();
     vadRecording = true;
     vadSpeechStart = startTimestamp || performance.now();
+    
+    // Track speech start for pacing analysis
+    currentSpeechStart = Date.now() / 1000;
+    
+    // Calculate response time (time since AI finished speaking)
+    if (aiSpeechEndTime !== null) {
+        const responseTime = currentSpeechStart - aiSpeechEndTime;
+        // Only count reasonable response times (0.1s to 60s)
+        if (responseTime > 0.1 && responseTime < 60) {
+            responseTimes.push(responseTime);
+            console.log(`Response time: ${responseTime.toFixed(2)}s`);
+        }
+        aiSpeechEndTime = null;  // Reset for next measurement
+    }
+    
     setVadStatus('speaking');
     updateRecordButtonForMode();
 }
 
 function stopVadCapture() {
     if (!vadRecorder || vadRecorder.state !== 'recording') return;
+    
+    // Track speech end for pacing analysis
+    if (currentSpeechStart !== null) {
+        const speechEnd = Date.now() / 1000;
+        speechTimestamps.push({
+            start: currentSpeechStart,
+            end: speechEnd
+        });
+        currentSpeechStart = null;
+    }
+    
     vadRecording = false;
     setVadStatus('processing');
     vadRecorder.stop();
@@ -545,12 +723,7 @@ function stopVadCapture() {
 
 function setVadStatus(state) {
     if (!vadStatusEl) return;
-    if (!state) {
-        vadStatusEl.classList.add('hidden');
-        return;
-    }
-
-    vadStatusEl.classList.remove('hidden');
+    
     const messages = {
         listening: 'Voice Activity: listening',
         speaking: 'Voice Activity: capturing speech…',
@@ -558,7 +731,19 @@ function setVadStatus(state) {
         idle: 'Voice Activity: idle'
     };
     vadStatusEl.textContent = messages[state] || 'Voice Activity: idle';
+    
+    // Update the indicator dot
+    if (vadIndicator) {
+        vadIndicator.classList.remove('speaking');
+        if (state === 'speaking') {
+            vadIndicator.classList.add('speaking');
+        }
+    }
 }
+
+// Minimum audio duration to prevent Whisper hallucinations on short clips
+// Increased to 800ms to better filter noise
+const MIN_AUDIO_DURATION_MS = 800;
 
 async function transmitChunks(chunks, mimeType = 'audio/webm') {
     if (!chunks.length || !socket || socket.readyState !== WebSocket.OPEN) {
@@ -566,6 +751,16 @@ async function transmitChunks(chunks, mimeType = 'audio/webm') {
     }
 
     const blob = new Blob(chunks, { type: mimeType });
+    
+    // Estimate duration: for 16kHz mono 16-bit audio, ~32 bytes per ms
+    // For compressed formats, we use blob.size / 4 as rough estimate
+    const estimatedDurationMs = blob.size / 4;
+    
+    // Skip very short audio clips (likely noise/accidental clicks)
+    if (estimatedDurationMs < MIN_AUDIO_DURATION_MS) {
+        console.log(`Skipping short audio clip (${Math.round(estimatedDurationMs)}ms < ${MIN_AUDIO_DURATION_MS}ms)`);
+        return;
+    }
 
     try {
         const arrayBuffer = await blob.arrayBuffer();
@@ -575,7 +770,7 @@ async function transmitChunks(chunks, mimeType = 'audio/webm') {
             mimeType: blob.type,
             sampleRate: CONFIG.SAMPLE_RATE,
             isFinal: true,
-            durationMs: Math.round(blob.size / 2)
+            durationMs: Math.round(estimatedDurationMs)
         }));
     } catch (error) {
         console.error('Failed to transmit recording', error);
@@ -585,14 +780,404 @@ async function transmitChunks(chunks, mimeType = 'audio/webm') {
 function appendChat(role, text) {
     if (!chatLog) return;
     const msgDiv = document.createElement('div');
-    msgDiv.className = `p-2 my-2 rounded ${role === 'AI' ? 'bg-gray-100 text-gray-800 self-start' : 'bg-blue-100 text-blue-800 self-end'}`;
-    msgDiv.textContent = `${role}: ${text}`;
+    const isAI = role === 'AI';
+    msgDiv.className = `message ${isAI ? 'assistant' : 'user'}`;
+    msgDiv.innerHTML = `<div class="role">${role}</div>${text}`;
     chatLog.appendChild(msgDiv);
     chatLog.scrollTop = chatLog.scrollHeight;
+    
+    // Track for analysis
+    conversationTranscript.push({
+        role: isAI ? 'assistant' : 'user',
+        content: text
+    });
+}
+
+// --- Webcam / Eye Contact Functions with Face-API.js ---
+let faceApiLoaded = false;
+let faceDetectionRunning = false;
+
+async function loadFaceApi() {
+    if (faceApiLoaded) return true;
+    
+    try {
+        // Check if face-api is loaded (with retries)
+        let attempts = 0;
+        while (typeof faceapi === 'undefined' && attempts < 5) {
+            console.log(`Waiting for face-api.js to load (attempt ${attempts + 1}/5)...`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+        
+        if (typeof faceapi === 'undefined') {
+            console.error('face-api.js failed to load after 5 attempts');
+            return false;
+        }
+        
+        console.log('face-api.js library loaded, loading models...');
+        
+        // Load the tiny face detector model from CDN (vladmandic fork)
+        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
+        
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        console.log('TinyFaceDetector model loaded');
+        
+        await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+        console.log('FaceLandmark68TinyNet model loaded');
+        
+        faceApiLoaded = true;
+        console.log('✅ Face-API models loaded successfully');
+        return true;
+    } catch (err) {
+        console.error('Failed to load face-api models:', err);
+        return false;
+    }
+}
+
+async function enableWebcam() {
+    try {
+        const webcamVideo = document.getElementById('webcamPreview');
+        const webcamCard = document.getElementById('webcamCard');
+        const eyeContactDot = document.getElementById('eyeContactDot');
+        const eyeContactLabel = document.getElementById('eyeContactLabel');
+        
+        // Request webcam access
+        webcamStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 320, height: 240, facingMode: 'user' } 
+        });
+        
+        webcamVideo.srcObject = webcamStream;
+        webcamCard.style.display = 'block';
+        
+        webcamEnabled = true;
+        webcamActive = true;
+        eyeContactData = [];
+        
+        if (webcamBtn) {
+            webcamBtn.textContent = '📷 Disable Webcam';
+        }
+        
+        // Try to load face-api for real detection
+        const faceApiReady = await loadFaceApi();
+        
+        if (faceApiReady) {
+            // Real face detection
+            faceDetectionRunning = true;
+            detectFace(webcamVideo, eyeContactDot, eyeContactLabel);
+        } else {
+            // Fallback: simple detection based on video stream activity
+            eyeContactInterval = setInterval(() => {
+                // Basic fallback - assume eye contact if video is playing
+                const isLooking = webcamVideo.readyState >= 2;
+                eyeContactData.push({
+                    timestamp: Date.now(),
+                    looking_at_camera: isLooking
+                });
+                eyeContactLabel.textContent = isLooking ? 'Tracking' : 'No face';
+                eyeContactDot.classList.toggle('active', isLooking);
+            }, 1000);
+        }
+        
+        console.log('Webcam enabled for eye contact tracking');
+    } catch (err) {
+        console.error('Failed to enable webcam:', err);
+        webcamEnabled = false;
+        webcamActive = false;
+        if (webcamBtn) {
+            webcamBtn.textContent = '📷 Webcam';
+        }
+        alert('Could not access webcam. Please ensure camera permissions are granted.');
+    }
+}
+
+async function detectFace(video, dotEl, labelEl) {
+    if (!faceDetectionRunning || !webcamEnabled) return;
+    
+    // Wait for video to be ready
+    if (video.readyState < 2) {
+        requestAnimationFrame(() => detectFace(video, dotEl, labelEl));
+        return;
+    }
+    
+    try {
+        const detection = await faceapi.detectSingleFace(
+            video, 
+            new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 })
+        ).withFaceLandmarks(true);
+        
+        const isLooking = detection !== undefined && detection !== null;
+        
+        eyeContactData.push({
+            timestamp: Date.now(),
+            looking_at_camera: isLooking,
+            confidence: detection ? detection.detection.score : 0
+        });
+        
+        if (dotEl) {
+            dotEl.classList.toggle('active', isLooking);
+        }
+        if (labelEl) {
+            if (isLooking) {
+                const confidence = Math.round(detection.detection.score * 100);
+                labelEl.textContent = `Tracking (${confidence}%)`;
+            } else {
+                labelEl.textContent = 'No face detected';
+            }
+        }
+    } catch (err) {
+        console.error('Face detection error:', err);
+        if (labelEl) {
+            labelEl.textContent = 'Detection error';
+        }
+    }
+    
+    // Continue detection loop (throttle to ~10fps for performance)
+    if (faceDetectionRunning && webcamEnabled) {
+        setTimeout(() => {
+            requestAnimationFrame(() => detectFace(video, dotEl, labelEl));
+        }, 100);
+    }
+}
+
+function disableWebcam() {
+    faceDetectionRunning = false;
+    
+    if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+    }
+    if (eyeContactInterval) {
+        clearInterval(eyeContactInterval);
+        eyeContactInterval = null;
+    }
+    
+    const webcamVideo = document.getElementById('webcamPreview');
+    const webcamCard = document.getElementById('webcamCard');
+    
+    if (webcamVideo) {
+        webcamVideo.srcObject = null;
+    }
+    if (webcamCard) {
+        webcamCard.style.display = 'none';
+    }
+    
+    webcamEnabled = false;
+    webcamActive = false;
+    
+    if (webcamBtn) {
+        webcamBtn.textContent = '📷 Webcam';
+    }
+}
+
+// --- End Session & Analysis Functions ---
+async function endSessionAndAnalyze() {
+    console.log('=== endSessionAndAnalyze CALLED ===');
+    console.log('Ending session and analyzing...');
+    
+    // Show modal with loading state
+    const modal = document.getElementById('analysisModal');
+    const contentEl = document.getElementById('analysisContent');
+    
+    modal.classList.add('active');
+    contentEl.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <span>Analyzing your session...</span>
+        </div>
+    `;
+    
+    // Disable webcam if enabled
+    disableWebcam();
+    
+    // Prepare analysis request
+    const analysisRequest = {
+        transcript: conversationTranscript,
+        eye_contact_data: eyeContactData.length > 0 ? eyeContactData : null,
+        speech_timestamps: speechTimestamps.length > 0 ? speechTimestamps : null,
+        response_times: responseTimes.length > 0 ? responseTimes : null,
+        scenario: currentScenario
+    };
+    
+    console.log('Speech timestamps:', speechTimestamps);
+    console.log('Response times:', responseTimes);
+    
+    try {
+        const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(analysisRequest)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Analysis request failed');
+        }
+        
+        const results = await response.json();
+        displayAnalysisResults(results, contentEl);
+        
+    } catch (error) {
+        console.error('Analysis failed:', error);
+        contentEl.innerHTML = `
+            <div class="loading">
+                <span style="color: var(--danger);">❌ Analysis failed. Please try again.</span>
+            </div>
+        `;
+    }
+}
+
+function getRatingClass(score) {
+    if (score === 'Excellent' || score === 'Good' || score >= 80) return 'excellent';
+    if (score === 'Fair' || score >= 60) return 'good';
+    if (score === 'Needs Improvement' || score >= 40) return 'fair';
+    return 'needs-work';
+}
+
+function displayAnalysisResults(results, contentEl) {
+    const score = results.overall_score || 0;
+    const scorePercent = score;
+    
+    let fillerTags = '';
+    if (results.filler_words && results.filler_words.details) {
+        fillerTags = Object.entries(results.filler_words.details)
+            .map(([word, count]) => `<span class="filler-tag">"${word}" × ${count}</span>`)
+            .join('');
+    }
+    
+    let pacingHtml = '';
+    if (results.speech_pacing) {
+        pacingHtml = `
+            <div class="analysis-card">
+                <h4>🎵 Speech Pacing</h4>
+                <span class="rating ${getRatingClass(results.speech_pacing.score)}">${results.speech_pacing.score}</span>
+                <div class="feedback">${results.speech_pacing.feedback}</div>
+                <div class="suggestion">
+                    Avg pause: ${results.speech_pacing.avg_gap}s | 
+                    Max pause: ${results.speech_pacing.max_gap}s | 
+                    Long pauses: ${results.speech_pacing.long_pauses}
+                </div>
+            </div>
+        `;
+    }
+    
+    let responseTimeHtml = '';
+    if (results.response_time) {
+        responseTimeHtml = `
+            <div class="analysis-card">
+                <h4>⏱️ Response Time</h4>
+                <span class="rating ${getRatingClass(results.response_time.score)}">${results.response_time.score}</span>
+                <div class="feedback">${results.response_time.feedback}</div>
+                <div class="suggestion">
+                    Avg: ${results.response_time.avg_time}s | 
+                    Min: ${results.response_time.min_time}s | 
+                    Max: ${results.response_time.max_time}s
+                </div>
+            </div>
+        `;
+    }
+    
+    let eyeContactHtml = '';
+    if (results.eye_contact) {
+        eyeContactHtml = `
+            <div class="analysis-card">
+                <h4>👁️ Eye Contact</h4>
+                <span class="rating ${getRatingClass(results.eye_contact.score)}">${results.eye_contact.score}</span>
+                <div class="feedback">${results.eye_contact.feedback}</div>
+            </div>
+        `;
+    }
+    
+    contentEl.innerHTML = `
+        <!-- Overall Score -->
+        <div class="score-section">
+            <div class="score-circle" style="--score-percent: ${scorePercent}%;">
+                <div class="score-value">${score}<span>/100</span></div>
+            </div>
+            <div class="score-label">Overall Performance Score</div>
+        </div>
+        
+        <!-- AI Summary -->
+        ${results.ai_summary ? `
+        <div class="analysis-card full-width" style="margin-bottom: 24px;">
+            <h4>🤖 AI Summary</h4>
+            <div class="ai-summary">${results.ai_summary}</div>
+        </div>
+        ` : ''}
+        
+        <!-- Analysis Grid -->
+        <div class="analysis-grid">
+            <!-- Filler Words -->
+            <div class="analysis-card">
+                <h4>💬 Filler Words</h4>
+                <div class="value">${results.filler_words?.count || 0}</div>
+                <span class="rating ${getRatingClass(results.filler_words?.score)}">${results.filler_words?.score || 'N/A'}</span>
+                <div class="filler-list">${fillerTags || '<span class="filler-tag">None detected ✓</span>'}</div>
+                <div class="suggestion">Target: under ${results.filler_words?.target || 5} per session</div>
+            </div>
+            
+            <!-- Delivery -->
+            <div class="analysis-card">
+                <h4>🎤 Delivery</h4>
+                <span class="rating ${getRatingClass(results.delivery?.score)}">${results.delivery?.score || 'N/A'}</span>
+                <div class="feedback">${results.delivery?.feedback || 'No feedback available'}</div>
+            </div>
+            
+            <!-- Tone -->
+            <div class="analysis-card">
+                <h4>🎭 Tone</h4>
+                <span class="rating ${getRatingClass(results.tone?.score)}">${results.tone?.score || 'N/A'}</span>
+                <div class="feedback">${results.tone?.feedback || 'No feedback available'}</div>
+            </div>
+            
+            <!-- Microaggressions -->
+            <div class="analysis-card">
+                <h4>⚠️ Microaggressions</h4>
+                <span class="rating ${results.microaggressions?.detected ? 'needs-work' : 'excellent'}">${results.microaggressions?.detected ? 'Detected' : 'None'}</span>
+                <div class="feedback">${results.microaggressions?.feedback || 'No issues detected'}</div>
+            </div>
+            
+            ${pacingHtml}
+            ${responseTimeHtml}
+            ${eyeContactHtml}
+        </div>
+        
+        <!-- New Session Button -->
+        <div style="text-align: center; margin-top: 24px;">
+            <button class="control-btn primary" onclick="startNewSession()">
+                🔄 Start New Session
+            </button>
+        </div>
+    `;
+}
+
+function startNewSession() {
+    // Reset state
+    conversationTranscript = [];
+    eyeContactData = [];
+    speechTimestamps = [];
+    responseTimes = [];
+    aiSpeechEndTime = null;
+    currentScenario = 'general';
+    currentSpeechStart = null;
+    
+    // Clear chat log
+    if (chatLog) {
+        chatLog.innerHTML = '';
+    }
+    
+    // Hide modal
+    document.getElementById('analysisModal').classList.remove('active');
+    
+    // Reset scenario selection
+    document.querySelectorAll('.scenario-btn').forEach(c => c.classList.remove('active'));
+    document.querySelector('.scenario-btn[data-scenario="general"]')?.classList.add('active');
+    
+    // Reconnect websocket to reset server-side conversation
+    reconnect();
 }
 
 // Start
 window.addEventListener('load', init);
 window.addEventListener('beforeunload', () => {
     disableVadMode();
+    disableWebcam();
 });
