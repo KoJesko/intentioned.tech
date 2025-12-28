@@ -191,10 +191,11 @@ Intentioned.tech core
 - **[Code of Conduct](code_of_conduct.html)**: Community standards and rules```
 
 
-## Safety Violation Logs**Server → Client:**
+## Safety Violation Logs
+
+**Server → Client:**
 
 When content is flagged by the AI moderation system, logs are stored locally:{
-
   "text": "AI response text",
 
 | Platform | Location |  "audio": "<base64-encoded-mp3>",
