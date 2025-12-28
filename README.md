@@ -97,7 +97,7 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 - NVIDIA GPU with CUDA support (recommended: 6GB+ VRAM)
 
 - Localhost access: `http://localhost:6942`
-     *Use SSL for enhanced capabilities (replace "http" with "https")   
+  * Use SSL for enhanced capabilities (replace "http" with "https")
 
 - Webcam (optional, for eye contact tracking)
 
