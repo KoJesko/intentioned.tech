@@ -1,5 +1,5 @@
 # Intentioned - Social Training Platform #
-======
+
 Pace AI Research - Voice Assistant
 
 
