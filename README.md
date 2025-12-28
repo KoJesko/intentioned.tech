@@ -178,20 +178,18 @@ Intentioned.tech core
 
 ├── requirements.txt       # Python dependencies
 
-├── cert.pem              # SSL certificate (not in repo)### WebSocket Protocol
+├── cert.pem              # SSL certificate (not in repo)
 
 ├── key.pem               # SSL private key (not in repo)
 
-└── README.md             # This file**Client → Server:**
+└── README.md             # This file
 
 
-## Policies & Documentation
+## 📋 Policies & Documentation
 
-- **[Privacy Policy](privacy_policy.html)**: How data is collected and stored  "mimeType": "audio/webm"
-
-- **[Terms of Use](terms_of_use.html)**: Usage terms and conditions}
-
-- **[Code of Conduct](code_of_conduct.html)**: Community standards and rules```
+- **[Privacy Policy](privacy_policy.html)**: How data is collected and stored
+- **[Terms of Use](terms_of_use.html)**: Usage terms and conditions
+- **[Code of Conduct](code_of_conduct.html)**: Community standards and rules
 
 
 ## Safety Violation Logs
