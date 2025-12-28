@@ -37,7 +37,7 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 
 ## Communication Analysis
 
-- **Filler Word Detection**: Track and reduce "um", "uh", "like", etc.| Component | Technology |
+- **Filler Word Detection**: Track and reduce "um", "uh", "like", etc.
 
 - **Speaking Pace (WPM)**: Measure words per minute for optimal delivery
 
