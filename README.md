@@ -1,26 +1,27 @@
-# 🎤 Pace AI Research - Voice Assistant
+# Intentioned - Social Training Platform
 
-A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS) to create a seamless conversational experience.
+A self-hosted, modular AGPL-licensed social training application. Practice conversations, improve communication skills, and receive real-time feedback using Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS).
 
 ## ✨ Features
 
 - **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio
-- **Multiple Scenarios**: General chat, Study tutor, Coding help, Creative writing
+- **Session Analysis**: Detailed feedback on filler words, delivery, tone, microaggressions, and eye contact
+- **Eye Contact Tracking**: Webcam-based tracking to improve engagement (using `face-api.js`)
+- **Multiple Scenarios**: General chat, Study tutor, Coding help, Creative writing, Parent-Teacher Conference
 - **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)
 - **HTTPS/WSS Support**: Secure connections with Let's Encrypt or self-signed certificates
-- **Edge TTS**: High-quality Microsoft Edge voice synthesis
-- **Whisper STT**: OpenAI's Whisper large-v3 for accurate speech recognition
-- **Hermes LLM**: NousResearch Hermes-3-Llama-3.1-8B for intelligent responses
+- **Multi-User Support**: Handles up to 5 concurrent sessions (optimized for RTX 5070 Ti)
+- **Offline Capable**: Supports offline STT (Vosk) and offline TTS (pyttsx3)
 
 ## 🖥️ Tech Stack
 
 | Component | Technology |
 |-----------|------------|
 | Backend | FastAPI + Uvicorn |
-| STT | OpenAI Whisper large-v3 |
-| LLM | NousResearch/Hermes-3-Llama-3.1-8B (4-bit quantized) |
-| TTS | Microsoft Edge TTS (en-US-AriaNeural) |
-| Frontend | Vanilla HTML/CSS/JS |
+| STT | Vosk (offline) or OpenAI Whisper (AI-based) |
+| LLM | Qwen/Qwen2.5-3B-Instruct (4-bit quantized) |
+| TTS | Microsoft Edge TTS (natural) or pyttsx3 (offline) |
+| Frontend | Vanilla HTML/CSS/JS + face-api.js |
 | Protocol | WebSocket (WS/WSS) |
 
 ## 🚀 Quick Start
@@ -28,7 +29,7 @@ A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large L
 ### Prerequisites
 
 - Python 3.10+
-- NVIDIA GPU with CUDA support (recommended: 8GB+ VRAM)
+- NVIDIA GPU with CUDA support (recommended: 8GB+ VRAM, optimized for 16GB)
 - Node.js (optional, for development)
 
 ### Installation
@@ -50,7 +51,7 @@ A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large L
 
 ### SSL/HTTPS Setup
 
-For secure connections, place your certificates in the project root:
+For secure connections (required for microphone/webcam outside localhost), place your certificates in the project root:
 - `cert.pem` - Certificate file (or fullchain)
 - `key.pem` - Private key file
 
@@ -72,9 +73,9 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
 
 ```
 intentioned-tech-voice-assistant/
-├── server.py          # FastAPI backend (STT + LLM + TTS)
+├── server.py          # FastAPI backend (STT + LLM + TTS + Analysis)
 ├── script.js          # Frontend WebSocket client
-├── index.html         # UI with scenario selection
+├── index.html         # UI with scenario selection and webcam support
 ├── requirements.txt   # Python dependencies
 ├── cert.pem          # SSL certificate (not in repo)
 ├── key.pem           # SSL private key (not in repo)
@@ -87,9 +88,11 @@ intentioned-tech-voice-assistant/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SERVER_HOST` | `0.0.0.0` | Bind address |
+| `SERVER_HOST` | `127.0.0.1` | Bind address |
 | `SERVER_PORT` | `6942` | Server port |
-| `LLM_MODEL_ID` | `NousResearch/Hermes-3-Llama-3.1-8B` | LLM model to use |
+| `LLM_MODEL_ID` | `Qwen/Qwen2.5-3B-Instruct` | LLM model to use |
+| `USE_VOSK` | `true` | Use offline Vosk STT (faster, no GPU) |
+| `USE_PYTTSX3` | `false` | Use offline pyttsx3 TTS instead of Edge TTS |
 | `HUGGING_FACE_HUB_TOKEN` | - | HuggingFace token (for gated models) |
 
 ### Running on Different Ports
@@ -104,6 +107,7 @@ SERVER_PORT=8080 python server.py
 |----------|------|-------------|
 | `GET /` | HTTP | Serves the web UI |
 | `GET /{path}` | HTTP | Static file serving |
+| `POST /api/analyze` | HTTP | Analyze completed session |
 | `WS /ws/chat` | WebSocket | Real-time audio chat |
 
 ### WebSocket Protocol
@@ -128,11 +132,11 @@ SERVER_PORT=8080 python server.py
 
 ## 🎨 UI Features
 
-- **Scenario Selection**: Choose context for AI responses
+- **Scenario Selection**: Choose context (General, Tutor, Coding, Creative, Parent-Teacher)
+- **Session Analysis**: Get scored on filler words, delivery, tone, and more
+- **Webcam Integration**: Track eye contact for better engagement scores
 - **Mic Mode Toggle**: Push-to-Talk vs Voice Activity Detection
-- **Audio Visualizer**: Real-time waveform display
-- **Connection Status**: Live server connection indicator
-- **Reconnect Button**: Manual reconnection option
+- **Real-time Status**: Connection, recording, and voice activity indicators
 
 ## 🐛 Troubleshooting
 
@@ -142,7 +146,8 @@ SERVER_PORT=8080 python server.py
 - For HTTPS, ensure certificates are valid
 
 ### GPU Out of Memory
-- The LLM requires ~6-8GB VRAM (4-bit quantized)
+- The LLM requires ~2GB VRAM (4-bit quantized Qwen-3B)
+- Whisper STT (if enabled) requires ~1-2GB
 - Kill other GPU processes: `nvidia-smi` → find PIDs → `kill <pid>`
 
 ### Mixed Content Errors
@@ -156,6 +161,8 @@ AGPL License - feel free to use and modify!
 ## 🙏 Acknowledgments
 
 - [OpenAI Whisper](https://github.com/openai/whisper) for STT
-- [NousResearch](https://nousresearch.com/) for the Hermes LLM
+- [Alpha Cephei Vosk](https://alphacephei.com/vosk/) for offline STT
+- [Qwen Team](https://huggingface.co/Qwen) for the Qwen2.5 LLM
 - [Edge TTS](https://github.com/rany2/edge-tts) for voice synthesis
 - [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
+- [face-api.js](https://github.com/vladmandic/face-api) for eye contact tracking
