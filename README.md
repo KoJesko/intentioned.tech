@@ -76,8 +76,6 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
    ```bash
    python server.py```
 
-## Project Structure
-
 3. **Access the UI**
    - Local: `http://localhost:6942`
    - With SSL: `https://localhost:6942`
