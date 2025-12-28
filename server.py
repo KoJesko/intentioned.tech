@@ -35,8 +35,16 @@ import re
 import tempfile
 import wave
 from collections import Counter
+from difflib import SequenceMatcher
 from threading import Thread, Lock
 from typing import Optional
+
+# --- Violation Tracking for Repeated Offense Detection ---
+# Stores recent violations per session to detect repeated similar violations
+_violation_tracker: dict[str, list[dict]] = {}
+_violation_tracker_lock = Lock()
+SIMILAR_VIOLATION_THRESHOLD = 3  # Number of similar violations before transmission
+SIMILARITY_THRESHOLD = 0.6  # How similar two violations need to be (0-1)
 
 import edge_tts
 import numpy as np
@@ -116,8 +124,9 @@ async def serve_static(filename: str):
 class AnalysisRequest(BaseModel):
     transcript: list[dict]  # List of {"role": "user"|"assistant", "content": str}
     eye_contact_data: Optional[list[dict]] = None  # Optional webcam data
-    speech_timestamps: Optional[list[dict]] = None  # Optional speech timing data {"start": float, "end": float}
+    speech_timestamps: Optional[list[dict]] = None  # Optional speech timing data {"start": float, "end": float, "word_count": int}
     response_times: Optional[list[float]] = None  # Time between AI done speaking and user starts speaking
+    interruption_count: int = 0  # Number of times user interrupted the AI
     scenario: str = "general"
 
 
@@ -128,7 +137,9 @@ class AnalysisResponse(BaseModel):
     microaggressions: dict  # {"detected": bool, "feedback": str}
     eye_contact: Optional[dict] = None  # {"score": str, "percentage": float, "feedback": str}
     speech_pacing: Optional[dict] = None  # {"score": str, "avg_gap": float, "feedback": str}
+    speaking_pace: Optional[dict] = None  # {"score": str, "wpm": float, "feedback": str}
     response_time: Optional[dict] = None  # {"score": str, "avg_time": float, "feedback": str}
+    interruptions: Optional[dict] = None  # {"score": str, "count": int, "feedback": str}
     overall_score: int = 0  # 0-100 overall score
     ai_summary: str = ""  # AI-generated summary
 
@@ -394,6 +405,267 @@ def check_microaggressions(transcript: list[dict]) -> dict:
     }
 
 
+# --- SAFETY SYSTEM: AI-Based Content Moderation ---
+def get_documents_folder() -> Path:
+    """Get the user's Documents folder in a cross-platform way."""
+    if os.name == "nt":  # Windows
+        # Use USERPROFILE or HOMEDRIVE+HOMEPATH
+        docs = Path(os.environ.get("USERPROFILE", "")) / "Documents"
+        if not docs.exists():
+            docs = Path.home() / "Documents"
+    elif sys.platform == "darwin":  # macOS
+        docs = Path.home() / "Documents"
+    else:  # Linux and others
+        # Check XDG_DOCUMENTS_DIR first, fallback to ~/Documents
+        xdg_docs = os.environ.get("XDG_DOCUMENTS_DIR")
+        if xdg_docs:
+            docs = Path(xdg_docs)
+        else:
+            docs = Path.home() / "Documents"
+    
+    # Create if it doesn't exist
+    docs.mkdir(parents=True, exist_ok=True)
+    return docs
+
+
+def get_safety_violations_folder() -> Path:
+    """Get or create the safety violations log folder."""
+    violations_folder = get_documents_folder() / "simulation_safety_violations"
+    violations_folder.mkdir(parents=True, exist_ok=True)
+    return violations_folder
+
+
+def log_safety_violation(
+    user_text: str,
+    conversation_history: list[dict],
+    violation_reason: str,
+    session_id: str = "unknown"
+) -> None:
+    """Log a safety violation with full transcript to the documents folder."""
+    import datetime
+    
+    violations_folder = get_safety_violations_folder()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"violation_{timestamp}_{session_id[:8]}.json"
+    filepath = violations_folder / filename
+    
+    log_data = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "session_id": session_id,
+        "violation_reason": violation_reason,
+        "triggering_message": user_text,
+        "full_transcript": conversation_history,
+        "note": "This log is maintained for safety and moderation purposes. See privacy policy for details."
+    }
+    
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
+        print(f"📝 Safety violation logged to: {filepath}")
+    except Exception as e:
+        print(f"⚠️ Failed to log safety violation: {e}")
+    
+    # Track violation for repeated offense detection
+    track_violation_for_repeat_detection(session_id, user_text, violation_reason)
+
+
+def calculate_text_similarity(text1: str, text2: str) -> float:
+    """Calculate similarity between two texts using SequenceMatcher."""
+    if not text1 or not text2:
+        return 0.0
+    # Normalize texts for comparison
+    t1 = text1.lower().strip()
+    t2 = text2.lower().strip()
+    return SequenceMatcher(None, t1, t2).ratio()
+
+
+def track_violation_for_repeat_detection(session_id: str, user_text: str, violation_reason: str) -> None:
+    """
+    Track a violation and check if similar violations have occurred repeatedly.
+    If 3 or more similar violations are detected, transmit to host.
+    """
+    import datetime
+    
+    with _violation_tracker_lock:
+        if session_id not in _violation_tracker:
+            _violation_tracker[session_id] = []
+        
+        new_violation = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "text": user_text,
+            "reason": violation_reason
+        }
+        _violation_tracker[session_id].append(new_violation)
+        
+        # Check for similar violations
+        violations = _violation_tracker[session_id]
+        
+        # Group similar violations
+        similar_groups: list[list[dict]] = []
+        for violation in violations:
+            found_group = False
+            for group in similar_groups:
+                # Check similarity with first item in group
+                if calculate_text_similarity(violation["text"], group[0]["text"]) >= SIMILARITY_THRESHOLD:
+                    group.append(violation)
+                    found_group = True
+                    break
+            if not found_group:
+                similar_groups.append([violation])
+        
+        # Check if any group has reached the threshold
+        for group in similar_groups:
+            if len(group) >= SIMILAR_VIOLATION_THRESHOLD:
+                print(f"⚠️ REPEATED VIOLATION DETECTED: {len(group)} similar violations from session {session_id[:8]}")
+                transmit_repeated_violations_to_host(session_id, group)
+                # Remove transmitted violations from tracker to avoid duplicate transmissions
+                for v in group:
+                    if v in _violation_tracker[session_id]:
+                        _violation_tracker[session_id].remove(v)
+                break  # Only transmit one group at a time
+
+
+def get_host_violations_folder() -> Path:
+    """Get the folder for transmitted repeated violations (accessible to host)."""
+    violations_folder = get_documents_folder() / "simulation_safety_violations" / "transmitted_to_host"
+    violations_folder.mkdir(parents=True, exist_ok=True)
+    return violations_folder
+
+
+def transmit_repeated_violations_to_host(session_id: str, violations: list[dict]) -> None:
+    """
+    Transmit repeated violations to the host (saves to a separate folder for host review).
+    This function is called when 3+ similar violations are detected from the same session.
+    """
+    import datetime
+    
+    host_folder = get_host_violations_folder()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"repeated_violation_{timestamp}_{session_id[:8]}.json"
+    filepath = host_folder / filename
+    
+    # Extract common theme from violations
+    violation_texts = [v["text"] for v in violations]
+    common_reasons = [v["reason"] for v in violations]
+    
+    transmission_data = {
+        "transmitted_at": datetime.datetime.now().isoformat(),
+        "session_id": session_id,
+        "violation_count": len(violations),
+        "reason_for_transmission": f"User submitted {len(violations)} similar safety violations",
+        "common_violation_type": common_reasons[0] if common_reasons else "Unknown",
+        "violations": violations,
+        "severity": "HIGH" if len(violations) >= 5 else "MODERATE",
+        "requires_host_action": True,
+        "note": "This report was automatically generated due to repeated similar violations. Please review and take appropriate action."
+    }
+    
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(transmission_data, f, indent=2, ensure_ascii=False)
+        print(f"🚨 TRANSMITTED to host: {filepath}")
+        print(f"   Reason: {len(violations)} similar violations detected from session {session_id[:8]}")
+    except Exception as e:
+        print(f"⚠️ Failed to transmit repeated violations to host: {e}")
+
+
+def clear_session_violations(session_id: str) -> None:
+    """Clear violation tracking for a session (called when session ends)."""
+    with _violation_tracker_lock:
+        if session_id in _violation_tracker:
+            del _violation_tracker[session_id]
+
+
+def check_content_safety_with_ai(text: str, conversation_history: list[dict]) -> dict:
+    """
+    Use the LLM to perform AI-based content moderation.
+    This replaces the hardcoded blacklist with intelligent analysis.
+    """
+    if not text or not text.strip():
+        return {"safe": True, "reason": None}
+    
+    # Check if model is loaded
+    if not model_manager.is_loaded or model_manager.llm_model is None:
+        # Fallback to basic check if model not loaded
+        return {"safe": True, "reason": None}
+    
+    # Build context for content moderation
+    recent_context = ""
+    if conversation_history:
+        recent_msgs = conversation_history[-4:]  # Last 4 messages for context
+        for msg in recent_msgs:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            if role != "system":
+                recent_context += f"{role}: {content}\n"
+    
+    moderation_prompt = [
+        {"role": "system", "content": """You are a content safety moderator for an educational social skills training application. 
+Your job is to determine if a user's message is appropriate for a training scenario.
+
+Respond with ONLY one of these formats:
+- "SAFE" if the content is appropriate
+- "UNSAFE: [brief reason]" if the content contains:
+  * Threats of violence or self-harm
+  * Explicit sexual content
+  * Harassment or hate speech
+  * Requests for illegal activities
+  * Extreme profanity directed at others
+  
+Be understanding that users are practicing difficult conversations and may express frustration.
+Normal expressions of emotion, disagreement, or challenging topics are SAFE.
+Only flag genuinely harmful content that crosses ethical boundaries."""},
+        {"role": "user", "content": f"Recent conversation context:\n{recent_context}\n\nNew message to evaluate:\n\"{text}\"\n\nIs this message SAFE or UNSAFE?"}
+    ]
+    
+    try:
+        # Use the model for moderation (quick check)
+        input_ids = model_manager.llm_tokenizer.apply_chat_template(
+            moderation_prompt,
+            return_tensors="pt",
+            add_generation_prompt=True,
+        ).to(device)
+        
+        with torch.no_grad():
+            outputs = model_manager.llm_model.generate(
+                input_ids,
+                max_new_tokens=50,
+                do_sample=False,
+                temperature=0.1,
+                pad_token_id=model_manager.llm_tokenizer.pad_token_id,
+            )
+        
+        response = model_manager.llm_tokenizer.decode(
+            outputs[0][input_ids.shape[1]:], 
+            skip_special_tokens=True
+        ).strip()
+        
+        # Parse response
+        if response.upper().startswith("UNSAFE"):
+            reason = response[7:].strip() if len(response) > 7 else "Content flagged by AI moderation"
+            reason = reason.lstrip(":").strip()
+            return {
+                "safe": False,
+                "reason": f"AI Moderation: {reason}" if reason else "This content has been flagged by our AI moderation system.",
+                "trigger": "ai_moderation"
+            }
+        
+        return {"safe": True, "reason": None}
+        
+    except Exception as e:
+        print(f"⚠️ AI moderation check failed: {e}")
+        # On error, default to safe to avoid blocking legitimate content
+        return {"safe": True, "reason": None}
+
+
+def check_content_safety(text: str, conversation_history: Optional[list[dict]] = None) -> dict:
+    """
+    Main content safety check - uses AI-based moderation.
+    Falls back gracefully if AI check fails.
+    """
+    return check_content_safety_with_ai(text, conversation_history or [])
+
+
 def analyze_eye_contact(eye_contact_data: list[dict]) -> Optional[dict]:
     """Analyze eye contact data from webcam."""
     if not eye_contact_data:
@@ -523,6 +795,102 @@ def analyze_response_time(response_times: list[float]) -> dict:
     }
 
 
+def analyze_speaking_pace(speech_timestamps: list[dict], transcript: list[dict]) -> dict:
+    """Analyze how fast the user speaks (words per minute)."""
+    if not speech_timestamps or len(speech_timestamps) < 1:
+        return {
+            "score": "🟡 Not Enough Data",
+            "avg_wpm": 0,
+            "min_wpm": 0,
+            "max_wpm": 0,
+            "feedback": "Not enough speech data to measure speaking pace."
+        }
+    
+    # Get user messages to match with timestamps
+    user_messages = [msg["content"] for msg in transcript if msg.get("role") == "user"]
+    
+    # Calculate WPM for each speech segment
+    wpm_values = []
+    for i, ts in enumerate(speech_timestamps):
+        start = ts.get("start", 0)
+        end = ts.get("end", 0)
+        duration_seconds = end - start
+        
+        # Use word_count from timestamp if provided, otherwise try to match with transcript
+        word_count = ts.get("word_count", 0)
+        if word_count == 0 and i < len(user_messages):
+            # Count words from corresponding transcript message
+            word_count = len(user_messages[i].split())
+        
+        if word_count > 0 and duration_seconds > 0.5:  # At least 0.5s of speech
+            wpm = (word_count / duration_seconds) * 60
+            wpm_values.append(wpm)
+    
+    if not wpm_values:
+        return {
+            "score": "🟡 Not Enough Data",
+            "avg_wpm": 0,
+            "min_wpm": 0,
+            "max_wpm": 0,
+            "feedback": "Could not calculate speaking pace from available data."
+        }
+    
+    avg_wpm = sum(wpm_values) / len(wpm_values)
+    min_wpm = min(wpm_values)
+    max_wpm = max(wpm_values)
+    
+    # Ideal speaking pace: 120-150 WPM (conversational)
+    # Acceptable range: 100-170 WPM
+    if 120 <= avg_wpm <= 150:
+        score = "🟢 Excellent"
+        feedback = f"Perfect conversational pace at {avg_wpm:.0f} WPM. Clear and easy to follow."
+    elif 100 <= avg_wpm < 120:
+        score = "🟡 Good"
+        feedback = f"Slightly slow at {avg_wpm:.0f} WPM. Consider picking up the pace slightly for more engaging conversations."
+    elif 150 < avg_wpm <= 170:
+        score = "🟡 Good"
+        feedback = f"Slightly fast at {avg_wpm:.0f} WPM. Still clear, but could slow down a bit."
+    elif avg_wpm < 100:
+        score = "🟠 Slow"
+        feedback = f"Speaking too slowly at {avg_wpm:.0f} WPM. Try to maintain a more natural conversational pace."
+    else:
+        score = "🔴 Too Fast"
+        feedback = f"Speaking too fast at {avg_wpm:.0f} WPM. Slow down to ensure your message is understood."
+    
+    return {
+        "score": score,
+        "avg_wpm": round(avg_wpm, 0),
+        "min_wpm": round(min_wpm, 0),
+        "max_wpm": round(max_wpm, 0),
+        "segments": len(wpm_values),
+        "feedback": feedback
+    }
+
+
+def analyze_interruptions(interruption_count: int) -> dict:
+    """Analyze user interruptions during AI speech."""
+    # Target: less than 3 interruptions is acceptable
+    if interruption_count == 0:
+        score = "🟢 Excellent"
+        feedback = "Perfect! You let the AI finish speaking before responding. Great listening skills!"
+    elif interruption_count < 3:
+        score = "🟡 Good"
+        feedback = f"You interrupted {interruption_count} time(s). Try to let the speaker finish for better conversation flow."
+    elif interruption_count < 5:
+        score = "🟠 Needs Work"
+        feedback = f"You interrupted {interruption_count} times. Practice patience and let others complete their thoughts."
+    else:
+        score = "🔴 Poor"
+        feedback = f"Frequent interruptions ({interruption_count} times). This can make others feel unheard. Work on active listening."
+    
+    return {
+        "score": score,
+        "count": interruption_count,
+        "threshold": 3,
+        "feedback": feedback
+    }
+
+
 @app.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze_session(request: AnalysisRequest):
     """Analyze a completed conversation session."""
@@ -540,6 +908,15 @@ async def analyze_session(request: AnalysisRequest):
     eye_contact_analysis = analyze_eye_contact(request.eye_contact_data) if request.eye_contact_data else None
     speech_pacing_analysis = analyze_speech_pacing(request.speech_timestamps) if request.speech_timestamps else None
     response_time_analysis = analyze_response_time(request.response_times) if request.response_times else None
+    
+    # New analyses: speaking pace (WPM) and interruptions
+    speaking_pace_analysis = analyze_speaking_pace(
+        request.speech_timestamps, request.transcript
+    ) if request.speech_timestamps else None
+    
+    interruption_analysis = analyze_interruptions(
+        request.interruption_count
+    ) if request.interruption_count is not None else None
     
     # Calculate overall score (include response time)
     overall = calculate_overall_score(
@@ -565,6 +942,8 @@ async def analyze_session(request: AnalysisRequest):
         eye_contact=eye_contact_analysis,
         speech_pacing=speech_pacing_analysis,
         response_time=response_time_analysis,
+        speaking_pace=speaking_pace_analysis,
+        interruptions=interruption_analysis,
         overall_score=overall,
         ai_summary=summary
     )
@@ -1282,6 +1661,7 @@ async def handle_user_turn(
     conversation_history: list[dict],
     mime_type: str | None = None,
     mute_audio: bool = False,
+    session_id: str = "unknown",
 ) -> None:
     """Process user audio input and generate AI response."""
     if not audio_payload:
@@ -1315,6 +1695,26 @@ async def handle_user_turn(
         return
 
     print(f"User: {user_text}")
+    
+    # Check content safety using AI moderation before proceeding
+    safety_result = check_content_safety(user_text, conversation_history)
+    if not safety_result.get("safe", True):
+        reason = safety_result.get("reason", "Content flagged by moderation system")
+        print(f"🚨 Safety violation detected: {reason}")
+        
+        # Log the violation with full transcript
+        log_safety_violation(
+            user_text=user_text,
+            conversation_history=conversation_history,
+            violation_reason=reason,
+            session_id=session_id
+        )
+        
+        await websocket.send_json({
+            "status": "safety_violation",
+            "message": reason
+        })
+        return
     
     # Send user's transcribed text back to client for display
     await websocket.send_json({"user_text": user_text})
@@ -1533,6 +1933,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         conversation_history,
                         mime_type=mime_type,
                         mute_audio=client_state["tts_muted"],
+                        session_id=session_id,
                     )
 
     except WebSocketDisconnect:

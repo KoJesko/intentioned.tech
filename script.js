@@ -72,6 +72,8 @@ let currentSpeechStart = null;  // Track when user starts speaking
 // Response time tracking (time between AI done speaking and user starts speaking)
 let aiSpeechEndTime = null;  // Timestamp when AI finishes speaking
 let responseTimes = [];  // Array of response times in seconds
+let isAiSpeaking = false;  // Track if AI is currently speaking
+let interruptionCount = 0;  // Count of times user interrupted AI
 
 // Webcam / Eye Contact state
 let webcamEnabled = false;
@@ -127,6 +129,13 @@ function initWebSocket() {
     socket.onmessage = async (event) => {
         try {
             const response = JSON.parse(event.data);
+            
+            // Handle safety violation - stop the conversation
+            if (response.status === 'safety_violation') {
+                console.log("🚨 Safety violation detected:", response.violation_type);
+                showSafetyViolation(response.message);
+                return;
+            }
             
             // Handle User's transcribed text
             if (response.user_text) {
@@ -203,6 +212,12 @@ async function startRecording() {
 
     // Track speech start time for pacing analysis
     currentSpeechStart = Date.now() / 1000;  // in seconds
+    
+    // Check for interruption (user speaking while AI is still speaking)
+    if (isAiSpeaking) {
+        interruptionCount++;
+        console.log(`⚠️ Interruption detected! Total: ${interruptionCount}`);
+    }
     
     // Calculate response time (time since AI finished speaking)
     if (aiSpeechEndTime !== null) {
@@ -348,6 +363,7 @@ async function queueAudio(base64String) {
 function playNextChunk() {
     if (audioQueue.length === 0) {
         isPlaying = false;
+        isAiSpeaking = false;  // AI finished speaking
         // Record when AI finishes speaking for response time measurement
         aiSpeechEndTime = Date.now() / 1000;
         console.log('AI finished speaking at:', aiSpeechEndTime);
@@ -355,6 +371,7 @@ function playNextChunk() {
     }
 
     isPlaying = true;
+    isAiSpeaking = true;  // AI is speaking
     const buffer = audioQueue.shift();
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
@@ -687,6 +704,12 @@ function startVadCapture(startTimestamp) {
     // Track speech start for pacing analysis
     currentSpeechStart = Date.now() / 1000;
     
+    // Check for interruption (user speaking while AI is still speaking)
+    if (isAiSpeaking) {
+        interruptionCount++;
+        console.log(`⚠️ Interruption detected! Total: ${interruptionCount}`);
+    }
+    
     // Calculate response time (time since AI finished speaking)
     if (aiSpeechEndTime !== null) {
         const responseTime = currentSpeechStart - aiSpeechEndTime;
@@ -803,6 +826,54 @@ function appendChat(role, text) {
         role: isAI ? 'assistant' : 'user',
         content: text
     });
+}
+
+// Show safety violation warning and force user to restart
+function showSafetyViolation(message) {
+    // Stop all recording immediately
+    if (isRecording) {
+        stopRecording();
+    }
+    if (vadRecording) {
+        stopVadRecording();
+    }
+    
+    // Clear the audio queue
+    audioQueue = [];
+    isPlaying = false;
+    
+    // Create a prominent warning message in the chat
+    const warningDiv = document.createElement('div');
+    warningDiv.className = 'message safety-warning';
+    warningDiv.innerHTML = `
+        <div class="role" style="color: #ef4444;">⚠️ Safety System</div>
+        <div style="background: rgba(239, 68, 68, 0.15); padding: 16px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);">
+            <strong>Conversation Stopped</strong><br>
+            <p style="margin: 8px 0;">${message}</p>
+            <p style="margin: 8px 0; font-size: 0.9em; color: #a0a0b0;">
+                Please click the <strong>🔄 Reset</strong> button to start a new conversation.
+            </p>
+        </div>
+    `;
+    chatLog.appendChild(warningDiv);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    
+    // Update status
+    updateStatus('Safety Violation - Please Reset', 'error');
+    
+    // Disable the record button until reset
+    if (recordBtn) {
+        recordBtn.disabled = true;
+        recordBtn.textContent = '🚫 Disabled';
+    }
+    
+    // Highlight the reset button
+    if (resetBtn) {
+        resetBtn.style.animation = 'pulse 1s infinite';
+        resetBtn.style.background = 'var(--danger)';
+        resetBtn.style.borderColor = 'var(--danger)';
+        resetBtn.style.color = 'white';
+    }
 }
 
 // --- Webcam / Eye Contact Functions with Face-API.js ---
@@ -1007,11 +1078,13 @@ async function endSessionAndAnalyze() {
         eye_contact_data: eyeContactData.length > 0 ? eyeContactData : null,
         speech_timestamps: speechTimestamps.length > 0 ? speechTimestamps : null,
         response_times: responseTimes.length > 0 ? responseTimes : null,
+        interruption_count: interruptionCount,
         scenario: currentScenario
     };
     
     console.log('Speech timestamps:', speechTimestamps);
     console.log('Response times:', responseTimes);
+    console.log('Interruption count:', interruptionCount);
     
     try {
         const response = await fetch('/api/analyze', {
@@ -1087,6 +1160,36 @@ function displayAnalysisResults(results, contentEl) {
         `;
     }
     
+    let speakingPaceHtml = '';
+    if (results.speaking_pace) {
+        speakingPaceHtml = `
+            <div class="analysis-card">
+                <h4>🏃 Speaking Pace</h4>
+                <span class="rating ${getRatingClass(results.speaking_pace.score)}">${results.speaking_pace.score}</span>
+                <div class="feedback">${results.speaking_pace.feedback}</div>
+                <div class="suggestion">
+                    Avg: ${results.speaking_pace.avg_wpm} WPM | 
+                    Min: ${results.speaking_pace.min_wpm} WPM | 
+                    Max: ${results.speaking_pace.max_wpm} WPM
+                </div>
+            </div>
+        `;
+    }
+    
+    let interruptionsHtml = '';
+    if (results.interruptions) {
+        interruptionsHtml = `
+            <div class="analysis-card">
+                <h4>🤐 Interruptions</h4>
+                <span class="rating ${getRatingClass(results.interruptions.score)}">${results.interruptions.score}</span>
+                <div class="feedback">${results.interruptions.feedback}</div>
+                <div class="suggestion">
+                    Count: ${results.interruptions.count} (Target: &lt;${results.interruptions.threshold})
+                </div>
+            </div>
+        `;
+    }
+    
     let eyeContactHtml = '';
     if (results.eye_contact) {
         eyeContactHtml = `
@@ -1149,6 +1252,8 @@ function displayAnalysisResults(results, contentEl) {
             
             ${pacingHtml}
             ${responseTimeHtml}
+            ${speakingPaceHtml}
+            ${interruptionsHtml}
             ${eyeContactHtml}
         </div>
         
@@ -1168,12 +1273,27 @@ function startNewSession() {
     speechTimestamps = [];
     responseTimes = [];
     aiSpeechEndTime = null;
+    isAiSpeaking = false;
+    interruptionCount = 0;
     currentScenario = 'general';
     currentSpeechStart = null;
     
     // Clear chat log
     if (chatLog) {
         chatLog.innerHTML = '';
+    }
+    
+    // Re-enable record button (in case it was disabled by safety violation)
+    if (recordBtn) {
+        recordBtn.disabled = false;
+    }
+    
+    // Reset the reset button style (in case it was highlighted)
+    if (resetBtn) {
+        resetBtn.style.animation = '';
+        resetBtn.style.background = '';
+        resetBtn.style.borderColor = '';
+        resetBtn.style.color = '';
     }
     
     // Hide modal
@@ -1185,6 +1305,9 @@ function startNewSession() {
     
     // Reconnect websocket to reset server-side conversation
     reconnect();
+    
+    // Update status
+    updateStatus('Connected', 'connected');
 }
 
 // Start

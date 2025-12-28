@@ -98,3 +98,11 @@ nginx.conf
 
 # NO-IP Lock
 noip-update.sh
+
+# Privacy Policy and Terms of Use (site-specific, may contain custom content)
+# NOTE: code_of_conduct.html is NOT ignored as it's universal
+privacy_policy.html
+terms_of_use.html
+
+# Safety violation logs folder (if checked into repo by accident)
+simulation_safety_violations/

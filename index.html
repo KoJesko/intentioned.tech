@@ -386,6 +386,15 @@
             border-bottom-left-radius: 4px;
         }
 
+        .message.safety-warning {
+            background: var(--danger-light);
+            color: var(--text-primary);
+            align-self: stretch;
+            max-width: 100%;
+            border: 1px solid var(--danger);
+            border-radius: 8px;
+        }
+
         .message .role {
             font-size: 0.65rem;
             font-weight: 600;
@@ -687,23 +696,23 @@
                 <div class="scenario-list">
                     <button class="scenario-btn active" data-scenario="general">
                         <span class="label">💬 General Assistant</span>
-                        <span class="desc">Free-form conversation practice</span>
+                        <span class="desc">Practice casual conversations with an AI helper. Perfect for warming up your communication skills.</span>
                     </button>
                     <button class="scenario-btn" data-scenario="tutor">
                         <span class="label">📚 Study Tutor</span>
-                        <span class="desc">Academic help and explanations</span>
+                        <span class="desc">Get academic help while practicing how to ask questions and explain your understanding.</span>
                     </button>
                     <button class="scenario-btn" data-scenario="coding">
                         <span class="label">💻 Coding Assistant</span>
-                        <span class="desc">Programming help and debugging</span>
+                        <span class="desc">Learn to articulate technical problems clearly and follow debugging conversations.</span>
                     </button>
                     <button class="scenario-btn" data-scenario="creative">
                         <span class="label">✨ Creative Partner</span>
-                        <span class="desc">Writing and brainstorming</span>
+                        <span class="desc">Collaborate on stories and ideas. Practice giving and receiving creative feedback.</span>
                     </button>
                     <button class="scenario-btn" data-scenario="parent-teacher">
                         <span class="label">🎓 Parent-Teacher Conference</span>
-                        <span class="desc">Practice difficult conversations</span>
+                        <span class="desc">Simulate challenging parent-teacher meetings. Practice staying calm and professional.</span>
                     </button>
                 </div>
             </div>
@@ -751,6 +760,27 @@
                     </div>
                 </div>
             </div>
+
+            <!-- How to Use Instructions -->
+            <div class="card">
+                <h3 class="card-title">📖 How to Use</h3>
+                <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.7;">
+                    <li><strong>Select a scenario</strong> above to set the conversation context.</li>
+                    <li><strong>Choose your input mode:</strong>
+                        <ul style="margin: 4px 0 8px 0; padding-left: 16px;">
+                            <li><em>Voice Activity</em> - Auto-detects when you speak</li>
+                            <li><em>Push-to-Talk</em> - Hold to record</li>
+                        </ul>
+                    </li>
+                    <li><strong>Click 🎤 Record</strong> to start the session.</li>
+                    <li><strong>Enable 📷 Webcam</strong> for eye contact tracking (optional).</li>
+                    <li><strong>Speak naturally</strong> - the AI will respond.</li>
+                    <li><strong>End the session</strong> to see your analysis report.</li>
+                </ol>
+                <div style="margin-top: 12px; padding: 10px; background: var(--accent-light); border-radius: 6px; font-size: 0.8rem; color: var(--accent);">
+                    💡 <strong>Tip:</strong> Keep eye contact with the camera for best results. Speak clearly and avoid long pauses.
+                </div>
+            </div>
         </aside>
 
         <!-- Main Content -->
@@ -796,30 +826,39 @@
         bottom: 0;
         left: 0;
         right: 0;
-        background: var(--bg-darker);
-        border-top: 1px solid var(--border);
-        padding: 8px 16px;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-color);
+        padding: 10px 16px;
         text-align: center;
         font-size: 12px;
         color: var(--text-muted);
         z-index: 100;
     ">
-        <span>Licensed under </span>
-        <a href="https://www.gnu.org/licenses/agpl-3.0.html" 
-           target="_blank" 
-           rel="noopener noreferrer"
-           style="color: var(--primary); text-decoration: none;">
-            AGPL-3.0
-        </a>
-        <span> • </span>
-        <a href="https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training" 
-           target="_blank" 
-           rel="noopener noreferrer"
-           style="color: var(--primary); text-decoration: none;">
-            View Source on GitHub
-        </a>
+        <div style="margin-bottom: 4px;">
+            <a href="/privacy_policy.html" style="color: var(--accent); text-decoration: none; margin: 0 8px;">Privacy Policy</a>
+            <span>•</span>
+            <a href="/terms_of_use.html" style="color: var(--accent); text-decoration: none; margin: 0 8px;">Terms of Use</a>
+            <span>•</span>
+            <a href="/code_of_conduct.html" style="color: var(--accent); text-decoration: none; margin: 0 8px;">Code of Conduct</a>
+        </div>
+        <div>
+            <span>Licensed under </span>
+            <a href="https://www.gnu.org/licenses/agpl-3.0.html" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               style="color: var(--accent); text-decoration: none;">
+                AGPL-3.0
+            </a>
+            <span> • </span>
+            <a href="https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               style="color: var(--accent); text-decoration: none;">
+                View Source on GitHub
+            </a>
+        </div>
     </footer>
 
-    <script src="script.js?v=10"></script>
+    <script src="script.js?v=12"></script>
 </body>
 </html>
