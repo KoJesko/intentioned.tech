@@ -35,8 +35,8 @@ A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large L
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/TTS.git
-   cd TTS
+   git clone https://github.com/yourusername/intentioned-tech-voice-assistant.git
+   cd intentioned-tech-voice-assistant
    ```
 
 2. **Run the server** (auto-creates virtualenv and installs dependencies)
@@ -71,7 +71,7 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
 ## 📁 Project Structure
 
 ```
-TTS/
+intentioned-tech-voice-assistant/
 ├── server.py          # FastAPI backend (STT + LLM + TTS)
 ├── script.js          # Frontend WebSocket client
 ├── index.html         # UI with scenario selection

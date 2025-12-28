@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/ari-tower-linux/Git/TTS/noip-update.sh
+ExecStart=/home/ari-tower-linux/Git/intentioned-tech-voice-assistant/noip-update.sh
 User=ari-tower-linux
 StandardOutput=journal
 StandardError=journal
