@@ -42,7 +42,7 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 | Frontend | Vanilla HTML/CSS/JS |
 | Protocol | WebSocket (WS/WSS) |
 
-## 📋 Requirements
+## 💻 Requirements
 
 - **Python 3.10+**
 - **NVIDIA GPU with CUDA support** (recommended: 6GB+ VRAM)
