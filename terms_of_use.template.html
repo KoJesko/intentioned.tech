@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Use - {{SITE_NAME}}</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --card-bg: #16161f;
+            --text-primary: #f0f0f5;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --accent: #6366f1;
+            --border-color: rgba(255, 255, 255, 0.08);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.8;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 40px;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: var(--accent);
+        }
+        
+        .last-updated {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-bottom: 32px;
+        }
+        
+        h2 {
+            font-size: 1.25rem;
+            margin-top: 32px;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        
+        p, li {
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        
+        ul, ol {
+            padding-left: 24px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+        
+        .highlight-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+        
+        .warning-box {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+        
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 24px;
+            color: var(--accent);
+        }
+        
+        .template-placeholder {
+            background: rgba(251, 191, 36, 0.2);
+            border: 1px dashed rgba(251, 191, 36, 0.6);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #fbbf24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Application</a>
+        
+        <h1>Terms of Use</h1>
+        <p class="last-updated">Last Updated: <span class="template-placeholder">{{LAST_UPDATED_DATE}}</span></p>
+        
+        <!-- TEMPLATE INSTRUCTIONS:
+             Replace all {{PLACEHOLDER}} values with your site-specific information.
+             After customization, save as "terms_of_use.html" (which is gitignored).
+             
+             Required replacements:
+             - {{SITE_NAME}}: Your site/organization name
+             - {{LAST_UPDATED_DATE}}: The date of last update (e.g., "January 1, 2025")
+             - {{CONTACT_EMAIL}} or {{CONTACT_URL}}: How users can contact you
+             - {{JURISDICTION}}: Your legal jurisdiction (optional)
+        -->
+        
+        <h2>1. Acceptance of Terms</h2>
+        <p>
+            By accessing or using <span class="template-placeholder">{{SITE_NAME}}</span> ("the Application"), you agree to be bound by these Terms of Use. 
+            If you do not agree to these terms, please do not use the Application.
+        </p>
+        
+        <h2>2. Description of Service</h2>
+        <p>
+            <span class="template-placeholder">{{SITE_NAME}}</span> is an open-source, self-hosted social skills training platform that provides:
+        </p>
+        <ul>
+            <li>AI-powered conversation practice scenarios</li>
+            <li>Speech-to-text transcription</li>
+            <li>Text-to-speech responses</li>
+            <li>Communication skills analysis and feedback</li>
+            <li>Eye contact tracking (optional)</li>
+        </ul>
+        
+        <div class="highlight-box">
+            <strong>Educational Purpose:</strong> This Application is designed for educational and training purposes only. 
+            It is not a substitute for professional therapy, counseling, or medical advice.
+        </div>
+        
+        <h2>3. License</h2>
+        <p>
+            This Application is licensed under the <strong>GNU Affero General Public License v3.0 (AGPL-3.0)</strong>. 
+            This means:
+        </p>
+        <ul>
+            <li>You may use, modify, and distribute the software freely</li>
+            <li>If you modify and deploy the software, you must make your source code available</li>
+            <li>You must include the original license and copyright notices</li>
+            <li>Network use constitutes distribution under AGPL-3.0</li>
+        </ul>
+        <p>
+            For the full license text, see the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank">AGPL-3.0 License</a>.
+        </p>
+        
+        <h2>4. User Responsibilities</h2>
+        <p>By using this Application, you agree to:</p>
+        <ul>
+            <li>Use the Application for its intended educational purpose</li>
+            <li>Not attempt to circumvent content moderation systems</li>
+            <li>Not use the Application to generate harmful, illegal, or abusive content</li>
+            <li>Take responsibility for your own deployment's security and privacy</li>
+            <li>Comply with all applicable laws and regulations</li>
+        </ul>
+        
+        <h2>5. Prohibited Uses</h2>
+        <p>You may NOT use the Application to:</p>
+        <ul>
+            <li>Generate content that promotes violence, self-harm, or illegal activities</li>
+            <li>Harass, threaten, or intimidate others</li>
+            <li>Create or distribute explicit sexual content</li>
+            <li>Violate any applicable laws or regulations</li>
+            <li>Attempt to extract or misuse the underlying AI models</li>
+            <li>Use for any commercial purpose without proper attribution under AGPL-3.0</li>
+        </ul>
+        
+        <h2>6. Content Moderation</h2>
+        <p>
+            The Application includes an AI-based content moderation system designed to maintain a safe training environment. 
+            Content that violates community standards may:
+        </p>
+        <ul>
+            <li>Trigger conversation lockout requiring a restart</li>
+            <li>Be logged locally for safety review (see <a href="/privacy_policy.html">Privacy Policy</a>)</li>
+            <li><strong>Repeated violations (3+):</strong> Automatically reported to host/administrator for review</li>
+        </ul>
+        
+        <div class="warning-box">
+            <strong>Repeated Violation Policy:</strong> If you submit 3 or more similar safety violations 
+            within a session, this pattern will be automatically reported to the host/administrator. 
+            This policy exists to prevent systematic misuse of the platform.
+        </div>
+        
+        <div class="warning-box">
+            <strong>No Guarantee:</strong> While we strive to maintain content safety, no moderation system is perfect. 
+            The AI may occasionally flag appropriate content or miss inappropriate content.
+        </div>
+        
+        <h2>7. Disclaimer of Warranties</h2>
+        <p>
+            THE APPLICATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO 
+            WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+        </p>
+        <ul>
+            <li>We do not guarantee the accuracy of AI responses</li>
+            <li>We do not guarantee the Application will be error-free or uninterrupted</li>
+            <li>We do not guarantee that the Application will meet your specific needs</li>
+            <li>Speech recognition and analysis may contain errors</li>
+        </ul>
+        
+        <h2>8. Limitation of Liability</h2>
+        <p>
+            TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE AUTHORS AND CONTRIBUTORS SHALL NOT BE LIABLE FOR ANY 
+            DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE 
+            OF THE APPLICATION.
+        </p>
+        
+        <h2>9. Indemnification</h2>
+        <p>
+            You agree to indemnify and hold harmless the Application's authors and contributors from any claims, 
+            damages, losses, or expenses arising from your use of the Application or violation of these Terms.
+        </p>
+        
+        <h2>10. Modifications</h2>
+        <p>
+            We reserve the right to modify these Terms at any time. Changes will be indicated by updating the 
+            "Last Updated" date. Continued use after changes constitutes acceptance of the modified Terms.
+        </p>
+        
+        <h2>11. Governing Law</h2>
+        <p>
+            These Terms shall be governed by and construed in accordance with the laws of 
+            <span class="template-placeholder">{{JURISDICTION}}</span>, without regard to conflict of law principles.
+        </p>
+        
+        <h2>12. Contact</h2>
+        <p>
+            For questions about these Terms, please contact us at 
+            <span class="template-placeholder">{{CONTACT_EMAIL}}</span> or visit 
+            <a href="{{CONTACT_URL}}" target="_blank"><span class="template-placeholder">{{CONTACT_URL}}</span></a>.
+        </p>
+    </div>
+</body>
+</html>
