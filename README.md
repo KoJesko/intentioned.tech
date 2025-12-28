@@ -1,4 +1,4 @@
-# 🎤 Intentioned — Social Training Platform# 🎤 Intentioned — Social Training Platform# 🎤 Intentioned - Social Training Platform 🎤 #
+# 🎤 Intentioned — Social Training Platform# 🎤 Intentioned — Social Training Platform# 🎤 Intentioned — Social Training Platform# 🎤 Intentioned - Social Training Platform 🎤 #
 
 
 
@@ -6,7 +6,7 @@ Pace AI Research — Voice-powered, self-hosted social skills training.
 
 
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)Pace AI Research — Voice-powered, self-hosted social skills training.Pace AI Research - Voice Assistant
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)Pace AI Research — Voice-powered, self-hosted social skills training.
 
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training)
 
@@ -14,7 +14,7 @@ Pace AI Research — Voice-powered, self-hosted social skills training.
 
 Intentioned is a self-hosted, open-source voice assistant for practicing conversations and improving communication skills. It combines Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS) for an interactive, real-time experience.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)Pace AI Research — Voice-powered, self-hosted social skills training.Pace AI Research - Voice Assistant
 
 ---
 
@@ -22,7 +22,7 @@ Intentioned is a self-hosted, open-source voice assistant for practicing convers
 
 ## ✨ Key Features
 
-A self-hosted, open-source voice-powered AI assistant designed for social skills training. Practice conversations, improve communication skills, and receive real-time feedback.A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS) to create a seamless conversational experience.
+
 
 - **Real-time Voice Interaction**: Speak naturally and receive audio responses.
 
@@ -30,99 +30,227 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 
 - **Two Mic Modes**: Push-to-Talk and Voice Activity Detection (VAD).
 
-- **High-Quality Audio**: Edge TTS (Microsoft) for speech synthesis.
+- **High-Quality Audio**: Edge TTS (Microsoft) for speech synthesis.[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 - **Robust STT**: Vosk (offline) with Whisper fallback.
 
-- **Communication Analysis**: Speaking pace, filler-word detection, interruption tracking, and eye-contact analysis.## ✨ Key Features
+- **Communication Analysis**: Speaking pace, filler-word detection, interruption tracking, and eye-contact analysis.---
 
 - **Safety & Privacy**: AI-based content moderation and local safety logging.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)## ✨ Features
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training)
 
 ---
 
-- **Real-time Voice Interaction**: Speak naturally and receive audio responses.
+## ✨ Key Features
 
 ## 🖥️ Tech Stack
 
-- **Multiple Training Scenarios**: General chat, tutor, coding help, roleplay (e.g., parent–teacher conferences).[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training)
+A self-hosted, open-source voice-powered AI assistant designed for social skills training. Practice conversations, improve communication skills, and receive real-time feedback.A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS) to create a seamless conversational experience.
 
 | Component | Technology |
 
-|-----------|------------|- **Two Mic Modes**: Push-to-Talk and Voice Activity Detection (VAD).
+|-----------|------------|- **Real-time Voice Interaction**: Speak naturally and receive audio responses.
 
 | Backend | FastAPI + Uvicorn |
 
-| LLM | Qwen / Hermes (4-bit quantized) |- **High-Quality Audio**: Edge TTS (Microsoft) for speech synthesis.- **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio
+| LLM | Qwen / Hermes (4-bit quantized) |- **Multiple Training Scenarios**: General chat, tutor, coding help, roleplay (e.g., parent–teacher conferences).Intentioned is a self-hosted, open-source voice assistant for practicing conversations and improving communication skills. It combines Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS) for an interactive, real-time experience.
 
 | STT | Vosk (offline) / Whisper fallback |
 
-| TTS | Microsoft Edge TTS |- **Robust STT**: Vosk (offline) with Whisper fallback.
+| TTS | Microsoft Edge TTS |- **Two Mic Modes**: Push-to-Talk and Voice Activity Detection (VAD).
 
 | Frontend | Vanilla HTML/CSS/JS + WebSocket |
+
+- **High-Quality Audio**: Edge TTS (Microsoft) for speech synthesis.
+
+---
+
+- **Robust STT**: Vosk (offline) with Whisper fallback.
+
+## 🚀 Quickstart
+
+- **Communication Analysis**: Speaking pace, filler-word detection, interruption tracking, and eye-contact analysis.## ✨ Key Features
+
+### Prerequisites
+
+- **Safety & Privacy**: AI-based content moderation and local safety logging.
+
+- Python 3.10+
+
+- Optional: NVIDIA GPU with CUDA (4–8 GB VRAM recommended)[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)## ✨ Features
+
+- Browser with microphone and camera permissions
+
+---
+
+### Installation & Run
+
+- **Real-time Voice Interaction**: Speak naturally and receive audio responses.
+
+1. **Run the server** (auto-creates virtualenv and installs dependencies):
+
+   ```bash## 🖥️ Tech Stack
+
+   python server.py
+
+   ```- **Multiple Training Scenarios**: General chat, tutor, coding help, roleplay (e.g., parent–teacher conferences).[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training)
+
+
+
+2. **Open the UI**:| Component | Technology |
+
+   - Local: `http://localhost:6942`
+
+   - HTTPS: `https://localhost:6942`|-----------|------------|- **Two Mic Modes**: Push-to-Talk and Voice Activity Detection (VAD).
+
+
+
+### SSL/HTTPS Setup| Backend | FastAPI + Uvicorn |
+
+
+
+For HTTPS (required for mic access from non-localhost), place `cert.pem` and `key.pem` in the project root.| LLM | Qwen / Hermes (4-bit quantized) |- **High-Quality Audio**: Edge TTS (Microsoft) for speech synthesis.- **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio
+
+
+
+**Generate self-signed cert (for testing):**| STT | Vosk (offline) / Whisper fallback |
+
+```bash
+
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \| TTS | Microsoft Edge TTS |- **Robust STT**: Vosk (offline) with Whisper fallback.
+
+  -sha256 -days 365 -nodes -subj "/CN=localhost"
+
+chmod 600 key.pem| Frontend | Vanilla HTML/CSS/JS + WebSocket |
+
+```
 
 - **Communication Analysis**: Speaking pace, filler-word detection, interruption tracking, and eye-contact analysis.## ✨ Features- **Multiple Scenarios**: General chat, Study tutor, Coding help, Creative writing
 
 ---
 
+---
+
+## 📁 Project Structure
+
 - **Safety & Privacy**: AI-based content moderation and local safety logging.
 
-## 🚀 Quickstart
+```
 
-- **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)
+TTS/## 🚀 Quickstart
 
-### Prerequisites
+├── server.py            # FastAPI backend (STT + LLM + TTS + analysis)
 
-## 🖥️ Tech Stack
+├── index.html           # Frontend UI- **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)
 
-- Python 3.10+
+├── script.js            # WebSocket client + UI logic
 
-- Optional: NVIDIA GPU with CUDA (4–8 GB VRAM recommended)### Core Functionality- **HTTPS/WSS Support**: Secure connections with Let's Encrypt or self-signed certificates
+├── privacy_policy.html  # Site-specific privacy policy (gitignored)### Prerequisites
 
-- Browser with microphone and camera permissions
+├── terms_of_use.html    # Site-specific terms (gitignored)
 
-- **Backend**: FastAPI + Uvicorn
+├── code_of_conduct.html # Universal code of conduct (tracked)## 🖥️ Tech Stack
 
-### Installation & Run
+├── requirements.txt     # Python dependencies
 
-- **LLM**: Qwen / Hermes (configurable; 4-bit quantized models supported)- **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio- **Edge TTS**: High-quality Microsoft Edge voice synthesis
+├── cert.pem             # SSL certificate (not in repo)- Python 3.10+
 
-1. **Run the server** (auto-creates virtualenv and installs dependencies):
+└── key.pem              # SSL private key (not in repo)
+
+```- Optional: NVIDIA GPU with CUDA (4–8 GB VRAM recommended)### Core Functionality- **HTTPS/WSS Support**: Secure connections with Let's Encrypt or self-signed certificates
+
+
+
+---- Browser with microphone and camera permissions
+
+
+
+## 🔧 Configuration- **Backend**: FastAPI + Uvicorn
+
+
+
+| Variable | Default | Description |### Installation & Run
+
+|----------|---------|-------------|
+
+| `SERVER_HOST` | `0.0.0.0` | Bind address |- **LLM**: Qwen / Hermes (configurable; 4-bit quantized models supported)- **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio- **Edge TTS**: High-quality Microsoft Edge voice synthesis
+
+| `SERVER_PORT` | `6942` | Server port |
+
+| `LLM_MODEL_ID` | `Qwen/Qwen2.5-3B-Instruct` | LLM to load |1. **Run the server** (auto-creates virtualenv and installs dependencies):
+
+| `HUGGING_FACE_HUB_TOKEN` | — | For gated models |
 
    ```bash- **STT**: Vosk (offline) with Whisper fallback
 
-   python server.py
+**Run on a different port:**
 
-   ```- **TTS**: Microsoft Edge TTS (edge-tts)- **Multiple Training Scenarios**: General chat, Study tutor, Coding help, Creative writing, Parent-Teacher conferences- **Whisper STT**: OpenAI's Whisper large-v3 for accurate speech recognition
+```bash   python server.py
 
+SERVER_PORT=8080 python server.py
 
-
-2. **Open the UI**:- **Frontend**: Vanilla HTML/CSS/JS (WebSocket client)
-
-   - Local: `http://localhost:6942`
-
-   - HTTPS: `https://localhost:6942`- **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)- **Hermes LLM**: NousResearch Hermes-3-Llama-3.1-8B for intelligent responses
+```   ```- **TTS**: Microsoft Edge TTS (edge-tts)- **Multiple Training Scenarios**: General chat, Study tutor, Coding help, Creative writing, Parent-Teacher conferences- **Whisper STT**: OpenAI's Whisper large-v3 for accurate speech recognition
 
 
 
-### SSL/HTTPS Setup## 🚀 Quickstart
+---
 
 
 
-For HTTPS (required for mic access from non-localhost), place `cert.pem` and `key.pem` in the project root.- **Eye Contact Tracking**: Optional webcam-based eye contact analysis
+## 🔌 API & WebSocket2. **Open the UI**:- **Frontend**: Vanilla HTML/CSS/JS (WebSocket client)
 
 
 
-**Generate self-signed cert (for testing):**### Prerequisites
+| Endpoint | Type | Description |   - Local: `http://localhost:6942`
 
-```bash
+|----------|------|-------------|
 
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \- Python 3.10+## 🖥️ Tech Stack
+| `GET /` | HTTP | Serves `index.html` |   - HTTPS: `https://localhost:6942`- **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)- **Hermes LLM**: NousResearch Hermes-3-Llama-3.1-8B for intelligent responses
 
-  -sha256 -days 365 -nodes -subj "/CN=localhost"
+| `GET /{path}` | HTTP | Static file serving |
 
-chmod 600 key.pem- Optional: NVIDIA GPU with CUDA (recommended 4–8 GB VRAM for quantized LLM)
+| `WS /ws/chat` | WebSocket | Real-time audio chat |
+
+
+
+### WebSocket Protocol### SSL/HTTPS Setup## 🚀 Quickstart
+
+
+
+**Client → Server (audio):**
+
+```json
+
+{For HTTPS (required for mic access from non-localhost), place `cert.pem` and `key.pem` in the project root.- **Eye Contact Tracking**: Optional webcam-based eye contact analysis
+
+  "type": "audio",
+
+  "audio": "<base64-encoded-audio>",
+
+  "mimeType": "audio/webm",
+
+  "isFinal": true**Generate self-signed cert (for testing):**### Prerequisites
+
+}
+
+``````bash
+
+
+
+**Server → Client:**openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \- Python 3.10+## 🖥️ Tech Stack
+
+```json
+
+{  -sha256 -days 365 -nodes -subj "/CN=localhost"
+
+  "text": "AI response text",
+
+  "audio": "<base64-encoded-mp3>",chmod 600 key.pem- Optional: NVIDIA GPU with CUDA (recommended 4–8 GB VRAM for quantized LLM)
+
+  "status": "streaming|complete|safety_violation"
+
+}```
 
 ```
 
@@ -130,57 +258,112 @@ chmod 600 key.pem- Optional: NVIDIA GPU with CUDA (recommended 4–8 GB VRAM for
 
 ---
 
+---
+
+## 🔒 Safety & Privacy
 
 
-## 📁 Project Structure
 
-### Installation & Run- **Filler Word Detection**: Track and reduce "um", "uh", "like", etc.| Component | Technology |
+- **AI Moderation**: Intelligent content moderation (no hard-coded blacklists).
+
+- **Local Logging**: Safety violations are stored locally:## 📁 Project Structure
+
+  - Windows: `%USERPROFILE%\Documents\simulation_safety_violations\`
+
+  - macOS/Linux: `~/Documents/simulation_safety_violations/`### Installation & Run- **Filler Word Detection**: Track and reduce "um", "uh", "like", etc.| Component | Technology |
+
+- **Repeated Violations**: 3+ similar violations trigger automatic transmission to `transmitted_to_host/` folder for host review.
 
 ```
 
+---
+
 TTS/
+
+## 🛠 Troubleshooting
 
 ├── server.py            # FastAPI backend (STT + LLM + TTS + analysis)
 
-├── index.html           # Frontend UI1. **Run the server** (this will auto-create a virtualenv and install dependencies):- **Speaking Pace (WPM)**: Measure words per minute for optimal delivery
+| Problem | Solution |
 
-├── script.js            # WebSocket client + UI logic
+|---------|----------|├── index.html           # Frontend UI1. **Run the server** (this will auto-create a virtualenv and install dependencies):- **Speaking Pace (WPM)**: Measure words per minute for optimal delivery
+
+| "Connection Died" | Ensure server is running: `ss -tulpn \| grep 6942` |
+
+| GPU OOM | LLMs need 4–8 GB VRAM. Check `nvidia-smi` and kill other processes. |├── script.js            # WebSocket client + UI logic
+
+| Microphone not working | HTTPS required for browser mic access on non-localhost. |
 
 ├── privacy_policy.html  # Site-specific privacy policy (gitignored)   ```bash
 
+---
+
 ├── terms_of_use.html    # Site-specific terms (gitignored)
+
+## 📝 License
 
 ├── code_of_conduct.html # Universal code of conduct (tracked)   python server.py- **Response Time Tracking**: Analyze how quickly you respond in conversations| Backend | FastAPI + Uvicorn |
 
+Licensed under **GNU Affero General Public License v3.0 (AGPL-3.0)**. See `LICENSE` for details.
+
 ├── requirements.txt     # Python dependencies
+
+---
 
 ├── cert.pem             # SSL certificate (not in repo)   ```
 
+## 🤝 Contributing
+
 └── key.pem              # SSL private key (not in repo)
+
+Please read `code_of_conduct.html` before contributing.
 
 ```- **Interruption Detection**: Track when you speak over the AI (target: <3)| STT | OpenAI Whisper large-v3 |
 
+1. Fork the repo
+
+2. Create a branch: `git checkout -b feature/my-feature`
+
+3. Commit: `git commit -m "Add feature"`
+
+4. Push and open a PR---2. **Open the UI**:
 
 
----2. **Open the UI**:
+
+---
 
 
 
-## 🔧 Configuration   - Local: `http://localhost:6942`- **Speech Pacing**: Detect long pauses and maintain conversation flow| LLM | NousResearch/Hermes-3-Llama-3.1-8B (4-bit quantized) |
+## 📞 Support## 🔧 Configuration   - Local: `http://localhost:6942`- **Speech Pacing**: Detect long pauses and maintain conversation flow| LLM | NousResearch/Hermes-3-Llama-3.1-8B (4-bit quantized) |
 
 
+
+- [GitHub Issues](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training/issues)
+
+- [GitHub Discussions](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training/discussions)
 
 | Variable | Default | Description |   - With HTTPS (required for mic access from non-localhost): `https://localhost:6942`
 
+---
+
 |----------|---------|-------------|
+
+## 🙏 Acknowledgments
 
 | `SERVER_HOST` | `0.0.0.0` | Bind address |- **Tone Analysis**: Get feedback on your conversational tone| TTS | Microsoft Edge TTS (en-US-AriaNeural) |
 
-| `SERVER_PORT` | `6942` | Server port |
+- [Vosk](https://alphacephei.com/vosk/) — offline STT
 
-| `LLM_MODEL_ID` | `Qwen/Qwen2.5-3B-Instruct` | LLM to load |   For HTTPS, place `cert.pem` and `key.pem` in the project root. You can use Let's Encrypt or generate a self-signed cert for testing:
+- [OpenAI Whisper](https://github.com/openai/whisper) — STT fallback| `SERVER_PORT` | `6942` | Server port |
 
-| `HUGGING_FACE_HUB_TOKEN` | — | For gated models |
+- [Qwen](https://github.com/QwenLM/Qwen2.5) / [Hermes](https://nousresearch.com/) — LLMs
+
+- [Edge TTS](https://github.com/rany2/edge-tts) — speech synthesis| `LLM_MODEL_ID` | `Qwen/Qwen2.5-3B-Instruct` | LLM to load |   For HTTPS, place `cert.pem` and `key.pem` in the project root. You can use Let's Encrypt or generate a self-signed cert for testing:
+
+- [face-api.js](https://github.com/vladmandic/face-api) — eye contact detection
+
+- [FastAPI](https://fastapi.tiangolo.com/) — backend framework| `HUGGING_FACE_HUB_TOKEN` | — | For gated models |
+
 
    ```bash- **Microaggression Detection**: Learn to avoid unintentionally harmful phrases| Frontend | Vanilla HTML/CSS/JS |
 
