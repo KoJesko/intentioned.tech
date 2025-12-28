@@ -63,8 +63,9 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 
 - **Python 3.10+**
 
-## 🖥️ Tech Stack- NVIDIA GPU with CUDA support (recommended: 8GB+ VRAM)
+## 🖥️ Tech Stack
 
+- NVIDIA GPU with CUDA support (recommended: 8GB+ VRAM)
 - Node.js (optional, for development)
 
 | Component | Technology |
