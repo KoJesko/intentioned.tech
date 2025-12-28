@@ -113,12 +113,6 @@ Intentioned/
 
 When content is flagged by the AI moderation system, logs are stored locally:{
 
-  "text": "AI response text",
-
-| Platform | Location |  "audio": "<base64-encoded-mp3>",
-
-|----------|----------|  "status": "streaming|complete"
-
 | **Windows** | `%USERPROFILE%\Documents\simulation_safety_violations\` |}
 
 | **macOS** | `~/Documents/simulation_safety_violations/` |```
@@ -152,8 +146,6 @@ Logs are JSON files containing timestamps, session IDs, and conversation transcr
 | `HUGGING_FACE_HUB_TOKEN` | - | HuggingFace token (for gated models) |- Verify WebSocket URL matches the server port
 
 - For HTTPS, ensure certificates are valid
-
-### Running on Different Ports
 
 ### GPU Out of Memory
 
@@ -209,7 +201,7 @@ set SERVER_PORT=8080 && python server.py- The client auto-detects protocol from 
 }
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -230,7 +222,7 @@ SERVER_PORT=8080 python server.py
 set SERVER_PORT=8080 && python server.py
 ```
 
-## 🗂️ Safety Violation Logs
+## Safety Violation Logs
 
 When content is flagged by the AI moderation system, logs are stored locally:
 
@@ -242,7 +234,7 @@ When content is flagged by the AI moderation system, logs are stored locally:
 
 Logs are JSON files containing timestamps, session IDs, and conversation transcripts.
 
-## 🎨 UI Features
+## UI Features
 
 - **Scenario Selection**: Choose training context with descriptions
 - **How to Use Guide**: Built-in instructions for new users
@@ -251,7 +243,7 @@ Logs are JSON files containing timestamps, session IDs, and conversation transcr
 - **Session Analysis**: Comprehensive performance report
 - **Connection Status**: Live server connection indicator
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### "Connection Died" Error
 - Check if the server is running: `ss -tulpn | grep 6942` (Linux) or `netstat -an | findstr 6942` (Windows)
