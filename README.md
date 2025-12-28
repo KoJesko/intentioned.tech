@@ -118,44 +118,47 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 | **macOS** | ✅ Fully Supported | macOS 11+ (Big Sur) |
 
 
-1. **Clone the repository**sudo chown $USER:$USER *.pem
+1. **Clone the repository**
 
    ```bash
    git clone https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training.git
+   cd Honors-Thesis-Conversational-AI-Training
+   ```
 
-   cd Honors-Thesis-Conversational-AI-Training``
-
-2. **Run the server** (auto-creates virtualenv and installs dependencies)openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
+2. **Run the server** (auto-creates virtualenv and installs dependencies)
 
    ```bash
-   python server.py```
-
-## Project Structure
+   python server.py
+   ```
 
 3. **Access the UI**
 
    - Local: `http://localhost:6942`
-
    - With SSL: `https://localhost:6942`
 
-├── server.py          # FastAPI backend (STT + LLM + TTS)
-
 ### SSL/HTTPS Setup
-├── script.js          # Frontend WebSocket client
-
-├── index.html         # UI with scenario selection
 
 For secure connections (required for microphone access from non-localhost):
 
-├── cert.pem          # SSL certificate (not in repo)
-
-├── requirements.txt   # Python dependencies
-
 **Generate self-signed certificate:**
-├── key.pem           # SSL private key (not in repo)
 
-**Git Files**
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
+  -days 365 -nodes -subj "/CN=localhost"
+sudo chown $USER:$USER *.pem
+```
+
+## Project Structure
+
+```
+├── server.py          # FastAPI backend (STT + LLM + TTS)
+├── script.js          # Frontend WebSocket client
+├── index.html         # UI with scenario selection
+├── cert.pem          # SSL certificate (not in repo)
+├── requirements.txt   # Python dependencies
+├── key.pem           # SSL private key (not in repo)
 └── README.md         # This file
+```
 
 
 
