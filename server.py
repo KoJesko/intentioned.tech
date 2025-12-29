@@ -86,7 +86,7 @@ import numpy as np
 import pyttsx3
 import soundfile as sf
 import torch
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -112,47 +112,440 @@ from transformers import (
 app = FastAPI()
 
 
-# Serve static files (index.html, script.js, etc.) with no-cache headers
-@app.get("/")
-async def serve_index():
-    response = FileResponse(PROJECT_ROOT / "index.html")
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
+# --- Runtime Configuration (changeable via UI) ---
+# These settings can be modified at runtime without restarting the server
+class RuntimeConfig:
+    """Holds runtime-configurable settings that can be changed via the web UI."""
+    
+    def __init__(self):
+        # TTS Settings
+        self.tts_engine = os.getenv("TTS_ENGINE", "vibevoice")  # vibevoice, edge, pyttsx3
+        self.vibevoice_voice = os.getenv("VIBEVOICE_VOICE", "en-Grace_woman")
+        self.edge_tts_voice = os.getenv("EDGE_TTS_VOICE", "female_us")
+        
+        # STT Settings (not Whisper)
+        self.stt_engine = os.getenv("STT_ENGINE", "wav2vec2")  # wav2vec2, vosk
+        
+        # LLM Settings
+        self.llm_max_tokens = int(os.getenv("LLM_MAX_NEW_TOKENS", "150"))
+        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+        
+    def to_dict(self):
+        return {
+            "tts_engine": self.tts_engine,
+            "vibevoice_voice": self.vibevoice_voice,
+            "edge_tts_voice": self.edge_tts_voice,
+            "stt_engine": self.stt_engine,
+            "llm_max_tokens": self.llm_max_tokens,
+            "llm_temperature": self.llm_temperature,
+        }
+    
+    def update(self, settings: dict):
+        if "tts_engine" in settings and settings["tts_engine"] in ["vibevoice", "edge", "pyttsx3"]:
+            self.tts_engine = settings["tts_engine"]
+        if "vibevoice_voice" in settings:
+            self.vibevoice_voice = settings["vibevoice_voice"]
+        if "edge_tts_voice" in settings:
+            self.edge_tts_voice = settings["edge_tts_voice"]
+        if "stt_engine" in settings and settings["stt_engine"] in ["wav2vec2", "vosk"]:
+            self.stt_engine = settings["stt_engine"]
+        if "llm_max_tokens" in settings:
+            self.llm_max_tokens = max(50, min(500, int(settings["llm_max_tokens"])))
+        if "llm_temperature" in settings:
+            self.llm_temperature = max(0.1, min(2.0, float(settings["llm_temperature"])))
 
 
-@app.get("/{filename:path}")
-async def serve_static(filename: str):
-    # Securely resolve the requested path
-    try:
-        # Ensure the provided filename is treated as a relative path segment
-        # Strip any leading path separators so we never interpret it as absolute
-        safe_filename = filename.lstrip("/\\")
-        candidate_path = (PROJECT_ROOT / safe_filename).resolve()
-        # Only allow serving files that reside inside PROJECT_ROOT
+# Global runtime config instance
+runtime_config = RuntimeConfig()
+
+# Available voice options for the UI
+VIBEVOICE_VOICES = [
+    {"id": "en-Carter_man", "name": "Carter (Male)"},
+    {"id": "en-Davis_man", "name": "Davis (Male)"},
+    {"id": "en-Emma_woman", "name": "Emma (Female)"},
+    {"id": "en-Frank_man", "name": "Frank (Male)"},
+    {"id": "en-Grace_woman", "name": "Grace (Female)"},
+    {"id": "en-Mike_man", "name": "Mike (Male)"},
+]
+
+EDGE_TTS_VOICES = [
+    {"id": "female_us", "name": "Aria (Female, US)"},
+    {"id": "male_us", "name": "Guy (Male, US)"},
+    {"id": "female_uk", "name": "Sonia (Female, UK)"},
+    {"id": "male_uk", "name": "Ryan (Male, UK)"},
+    {"id": "female_au", "name": "Natasha (Female, AU)"},
+    {"id": "male_au", "name": "William (Male, AU)"},
+]
+
+
+@app.get("/api/settings")
+async def get_settings():
+    """Get current runtime settings and available options."""
+    return {
+        "current": runtime_config.to_dict(),
+        "options": {
+            "tts_engines": [
+                {"id": "vibevoice", "name": "VibeVoice (Natural AI Voice)"},
+                {"id": "edge", "name": "Edge TTS (Microsoft Online)"},
+                {"id": "pyttsx3", "name": "pyttsx3 (Offline)"},
+            ],
+            "vibevoice_voices": VIBEVOICE_VOICES,
+            "edge_tts_voices": EDGE_TTS_VOICES,
+            "stt_engines": [
+                {"id": "wav2vec2", "name": "Wav2Vec2 (AI, No Hallucinations)"},
+                {"id": "vosk", "name": "Vosk (Traditional, Fast)"},
+            ],
+        },
+    }
+
+
+@app.post("/api/settings")
+async def update_settings(settings: dict):
+    """Update runtime settings."""
+    runtime_config.update(settings)
+    return {"status": "ok", "current": runtime_config.to_dict()}
+
+
+# --- Session Results Storage (CSV format) ---
+RESULTS_DIR = PROJECT_ROOT / "session_results"
+RESULTS_DIR.mkdir(exist_ok=True)
+
+# CSV columns for session results
+CSV_COLUMNS = [
+    "timestamp", "session_id", "scenario", "overall_score",
+    "filler_word_count", "filler_word_score", "filler_details",
+    "delivery_score", "delivery_feedback",
+    "tone_score", "tone_feedback",
+    "microaggressions_detected", "microaggressions_feedback",
+    "eye_contact_score", "eye_contact_percentage", "eye_contact_feedback",
+    "speech_pacing_score", "speech_pacing_avg_gap", "speech_pacing_feedback",
+    "speaking_pace_score", "speaking_pace_wpm", "speaking_pace_feedback",
+    "response_time_score", "response_time_avg", "response_time_feedback",
+    "interruptions_score", "interruptions_count", "interruptions_feedback",
+    "ai_summary"
+]
+
+
+def _flatten_result_to_row(result: dict, session_id: str | None = None) -> dict:
+    """Flatten a nested result dict into a CSV row."""
+    from datetime import datetime
+    
+    row = {
+        "timestamp": datetime.now().isoformat(),
+        "session_id": session_id or "",
+        "scenario": result.get("scenario", "general"),
+        "overall_score": result.get("overall_score", 0),
+        
+        # Filler words
+        "filler_word_count": result.get("filler_words", {}).get("count", 0),
+        "filler_word_score": result.get("filler_words", {}).get("score", ""),
+        "filler_details": str(result.get("filler_words", {}).get("details", {})),
+        
+        # Delivery
+        "delivery_score": result.get("delivery", {}).get("score", ""),
+        "delivery_feedback": result.get("delivery", {}).get("feedback", ""),
+        
+        # Tone
+        "tone_score": result.get("tone", {}).get("score", ""),
+        "tone_feedback": result.get("tone", {}).get("feedback", ""),
+        
+        # Microaggressions
+        "microaggressions_detected": result.get("microaggressions", {}).get("detected", False),
+        "microaggressions_feedback": result.get("microaggressions", {}).get("feedback", ""),
+        
+        # Eye contact
+        "eye_contact_score": result.get("eye_contact", {}).get("score", "") if result.get("eye_contact") else "",
+        "eye_contact_percentage": result.get("eye_contact", {}).get("percentage", 0) if result.get("eye_contact") else "",
+        "eye_contact_feedback": result.get("eye_contact", {}).get("feedback", "") if result.get("eye_contact") else "",
+        
+        # Speech pacing
+        "speech_pacing_score": result.get("speech_pacing", {}).get("score", "") if result.get("speech_pacing") else "",
+        "speech_pacing_avg_gap": result.get("speech_pacing", {}).get("avg_gap", 0) if result.get("speech_pacing") else "",
+        "speech_pacing_feedback": result.get("speech_pacing", {}).get("feedback", "") if result.get("speech_pacing") else "",
+        
+        # Speaking pace (WPM)
+        "speaking_pace_score": result.get("speaking_pace", {}).get("score", "") if result.get("speaking_pace") else "",
+        "speaking_pace_wpm": result.get("speaking_pace", {}).get("avg_wpm", 0) if result.get("speaking_pace") else "",
+        "speaking_pace_feedback": result.get("speaking_pace", {}).get("feedback", "") if result.get("speaking_pace") else "",
+        
+        # Response time
+        "response_time_score": result.get("response_time", {}).get("score", "") if result.get("response_time") else "",
+        "response_time_avg": result.get("response_time", {}).get("avg_time", 0) if result.get("response_time") else "",
+        "response_time_feedback": result.get("response_time", {}).get("feedback", "") if result.get("response_time") else "",
+        
+        # Interruptions
+        "interruptions_score": result.get("interruptions", {}).get("score", "") if result.get("interruptions") else "",
+        "interruptions_count": result.get("interruptions", {}).get("count", 0) if result.get("interruptions") else "",
+        "interruptions_feedback": result.get("interruptions", {}).get("feedback", "") if result.get("interruptions") else "",
+        
+        # AI Summary
+        "ai_summary": result.get("ai_summary", ""),
+    }
+    return row
+
+
+def _row_to_result(row: dict) -> dict:
+    """Convert a CSV row back to a nested result dict."""
+    result = {
+        "scenario": row.get("scenario", "general"),
+        "overall_score": int(row.get("overall_score", 0)),
+        "filler_words": {
+            "count": int(row.get("filler_word_count", 0)),
+            "score": row.get("filler_word_score", ""),
+            "details": eval(row.get("filler_details", "{}")) if row.get("filler_details") else {},
+        },
+        "delivery": {
+            "score": row.get("delivery_score", ""),
+            "feedback": row.get("delivery_feedback", ""),
+        },
+        "tone": {
+            "score": row.get("tone_score", ""),
+            "feedback": row.get("tone_feedback", ""),
+        },
+        "microaggressions": {
+            "detected": row.get("microaggressions_detected", "").lower() == "true" if isinstance(row.get("microaggressions_detected"), str) else bool(row.get("microaggressions_detected")),
+            "feedback": row.get("microaggressions_feedback", ""),
+        },
+        "ai_summary": row.get("ai_summary", ""),
+    }
+    
+    # Optional fields
+    if row.get("eye_contact_score"):
+        result["eye_contact"] = {
+            "score": row.get("eye_contact_score", ""),
+            "percentage": float(row.get("eye_contact_percentage", 0)),
+            "feedback": row.get("eye_contact_feedback", ""),
+        }
+    if row.get("speech_pacing_score"):
+        result["speech_pacing"] = {
+            "score": row.get("speech_pacing_score", ""),
+            "avg_gap": float(row.get("speech_pacing_avg_gap", 0)),
+            "feedback": row.get("speech_pacing_feedback", ""),
+        }
+    if row.get("speaking_pace_score"):
+        result["speaking_pace"] = {
+            "score": row.get("speaking_pace_score", ""),
+            "avg_wpm": float(row.get("speaking_pace_wpm", 0)),
+            "feedback": row.get("speaking_pace_feedback", ""),
+        }
+    if row.get("response_time_score"):
+        result["response_time"] = {
+            "score": row.get("response_time_score", ""),
+            "avg_time": float(row.get("response_time_avg", 0)),
+            "feedback": row.get("response_time_feedback", ""),
+        }
+    if row.get("interruptions_score"):
+        result["interruptions"] = {
+            "score": row.get("interruptions_score", ""),
+            "count": int(row.get("interruptions_count", 0)),
+            "feedback": row.get("interruptions_feedback", ""),
+        }
+    
+    return result
+
+
+def save_session_result(result: dict, session_id: str | None = None) -> str:
+    """Save a session analysis result to CSV file."""
+    import csv
+    from datetime import datetime
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if session_id:
+        filename = f"session_{timestamp}_{session_id[:8]}.csv"
+    else:
+        filename = f"session_{timestamp}.csv"
+    
+    filepath = RESULTS_DIR / filename
+    row = _flatten_result_to_row(result, session_id)
+    
+    with open(filepath, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerow(row)
+    
+    print(f"[Results] Saved session result to {filename}")
+    return filename
+
+
+def list_session_results() -> list[dict]:
+    """List all saved session results (CSV files)."""
+    import csv
+    
+    results = []
+    for filepath in sorted(RESULTS_DIR.glob("session_*.csv"), reverse=True):
         try:
-            # Use Path.relative_to on resolved paths to enforce containment
-            candidate_path.relative_to(PROJECT_ROOT)
-        except ValueError:
-            # Path is outside PROJECT_ROOT; fall back to index.html
-            response = FileResponse(PROJECT_ROOT / "index.html")
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            return response
-        if candidate_path.exists() and candidate_path.is_file():
-            response = FileResponse(candidate_path)
-            # No cache for HTML/JS files to ensure latest version
-            if safe_filename.endswith(('.html', '.js', '.css')):
-                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                response.headers["Pragma"] = "no-cache"
-                response.headers["Expires"] = "0"
-            return response
-    except Exception:
-        # Any error (invalid path, permission, etc) falls back
-        pass
-    response = FileResponse(PROJECT_ROOT / "index.html")
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return response
+            with open(filepath, "r", newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                row = next(reader, None)
+                if row:
+                    results.append({
+                        "filename": filepath.name,
+                        "timestamp": row.get("timestamp", "Unknown"),
+                        "overall_score": int(row.get("overall_score", 0)),
+                        "scenario": row.get("scenario", "general"),
+                    })
+        except Exception as e:
+            print(f"[Results] Error reading {filepath.name}: {e}")
+    return results
+
+
+def load_session_result(filename: str) -> dict | None:
+    """Load a specific session result from CSV."""
+    import csv
+    
+    # Security: ensure filename is safe (no path traversal)
+    safe_filename = Path(filename).name
+    if not safe_filename.endswith(".csv") or not safe_filename.startswith("session_"):
+        return None
+    
+    filepath = RESULTS_DIR / safe_filename
+    if not filepath.exists():
+        return None
+    
+    try:
+        with open(filepath, "r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            row = next(reader, None)
+            if row:
+                return {
+                    "timestamp": row.get("timestamp"),
+                    "session_id": row.get("session_id"),
+                    "result": _row_to_result(row),
+                }
+        return None
+    except Exception as e:
+        print(f"[Results] Error loading {filename}: {e}")
+        return None
+
+
+def delete_session_result(filename: str) -> bool:
+    """Delete a specific session result."""
+    safe_filename = Path(filename).name
+    if not safe_filename.endswith(".csv") or not safe_filename.startswith("session_"):
+        return False
+    
+    filepath = RESULTS_DIR / safe_filename
+    if filepath.exists():
+        filepath.unlink()
+        return True
+    return False
+
+
+@app.get("/api/results")
+async def get_results_list():
+    """Get list of saved session results."""
+    return {"results": list_session_results()}
+
+
+@app.get("/api/results/{filename}")
+async def get_result(filename: str):
+    """Get a specific session result."""
+    result = load_session_result(filename)
+    if result is None:
+        return {"error": "Result not found"}
+    return result
+
+
+@app.delete("/api/results/{filename}")
+async def delete_result(filename: str):
+    """Delete a specific session result."""
+    if delete_session_result(filename):
+        return {"status": "ok"}
+    return {"error": "Result not found"}
+
+
+@app.post("/api/results/import")
+async def import_result(file: UploadFile = File(...)):
+    """Import a session result from uploaded CSV file."""
+    import csv
+    from io import StringIO
+    from datetime import datetime
+    
+    if not file.filename or not file.filename.endswith(".csv"):
+        return {"error": "Invalid file format - must be a CSV file"}
+    
+    try:
+        # Read the uploaded CSV content
+        content = await file.read()
+        content_str = content.decode("utf-8")
+        reader = csv.DictReader(StringIO(content_str))
+        row = next(reader, None)
+        
+        if row is None:
+            return {"error": "CSV file is empty"}
+        
+        # Save as imported file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"session_{timestamp}_imported.csv"
+        filepath = RESULTS_DIR / filename
+        
+        # Write the CSV with our standard columns
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+            writer.writeheader()
+            # Fill in missing columns with empty strings
+            clean_row = {col: row.get(col, "") for col in CSV_COLUMNS}
+            writer.writerow(clean_row)
+        
+        return {"status": "ok", "filename": filename}
+    except Exception as e:
+        return {"error": f"Failed to import CSV: {str(e)}"}
+
+
+@app.get("/api/results/export/{filename}")
+async def export_result(filename: str):
+    """Export a session result as downloadable CSV."""
+    from fastapi.responses import FileResponse
+    
+    safe_filename = Path(filename).name
+    if not safe_filename.endswith(".csv") or not safe_filename.startswith("session_"):
+        return {"error": "Invalid filename"}
+    
+    filepath = RESULTS_DIR / safe_filename
+    if not filepath.exists():
+        return {"error": "Result not found"}
+    
+    return FileResponse(
+        path=filepath,
+        media_type="text/csv",
+        filename=safe_filename,
+    )
+
+
+@app.get("/api/results/export-all")
+async def export_all_results():
+    """Export ALL session results as a single combined CSV file."""
+    import csv
+    from io import StringIO
+    from fastapi.responses import Response
+    from datetime import datetime
+    
+    # Collect all rows from all CSV files
+    all_rows = []
+    for filepath in sorted(RESULTS_DIR.glob("session_*.csv")):
+        try:
+            with open(filepath, "r", newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    all_rows.append(row)
+        except Exception as e:
+            print(f"[Results] Error reading {filepath.name}: {e}")
+    
+    # Create combined CSV
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=CSV_COLUMNS)
+    writer.writeheader()
+    for row in all_rows:
+        # Ensure all columns exist
+        clean_row = {col: row.get(col, "") for col in CSV_COLUMNS}
+        writer.writerow(clean_row)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=all_sessions_{timestamp}.csv"}
+    )
 
 
 # --- Analysis Request/Response Models ---
@@ -1116,6 +1509,29 @@ async def analyze_session(request: AnalysisRequest):
     
     print(f"✅ Analysis complete: {filler_analysis['count']} filler words, overall score: {overall}/100")
     
+    # Build result dict
+    result = {
+        "filler_words": filler_analysis,
+        "delivery": delivery_analysis,
+        "tone": tone_analysis,
+        "microaggressions": microaggression_analysis,
+        "eye_contact": eye_contact_analysis,
+        "speech_pacing": speech_pacing_analysis,
+        "response_time": response_time_analysis,
+        "speaking_pace": speaking_pace_analysis,
+        "interruptions": interruption_analysis,
+        "overall_score": overall,
+        "ai_summary": summary,
+        "scenario": request.scenario,
+        "transcript": request.transcript,
+    }
+    
+    # Auto-save result to file
+    try:
+        save_session_result(result)
+    except Exception as e:
+        print(f"[Results] Warning: Could not auto-save result: {e}")
+    
     return AnalysisResponse(
         filler_words=filler_analysis,
         delivery=delivery_analysis,
@@ -1227,7 +1643,7 @@ USE_NEURAL_TTS = os.getenv("USE_NEURAL_TTS", "true").lower() in {"1", "true", "y
 # VibeVoice Realtime models (loaded lazily)
 _vibevoice_processor = None
 _vibevoice_model = None
-_vibevoice_voice_preset = None
+_vibevoice_voice_presets = {}  # Cache of loaded voice presets by name
 _vibevoice_lock = Lock()
 
 # Path to VibeVoice repo and voice presets
@@ -1237,12 +1653,35 @@ VIBEVOICE_VOICES_PATH = VIBEVOICE_REPO_PATH / "demo" / "voices" / "streaming_mod
 VIBEVOICE_DEFAULT_VOICE = os.getenv("VIBEVOICE_VOICE", "en-Grace_woman")
 
 
-def get_vibevoice_tts():
+def _load_vibevoice_voice(voice_name: str):
+    """Load a specific voice preset, caching for reuse."""
+    global _vibevoice_voice_presets
+    
+    if voice_name in _vibevoice_voice_presets:
+        return _vibevoice_voice_presets[voice_name]
+    
+    voice_file = VIBEVOICE_VOICES_PATH / f"{voice_name}.pt"
+    if voice_file.exists():
+        target_device = device if device == "cuda" else "cpu"
+        preset = torch.load(str(voice_file), map_location=target_device, weights_only=False)
+        _vibevoice_voice_presets[voice_name] = preset
+        print(f"[TTS] Loaded voice preset: {voice_name}")
+        return preset
+    else:
+        print(f"[TTS] Voice preset not found: {voice_file}")
+        return None
+
+
+def get_vibevoice_tts(voice_name: str | None = None):
     """Get or initialize VibeVoice Realtime TTS models (lazy loading)."""
-    global _vibevoice_processor, _vibevoice_model, _vibevoice_voice_preset
+    global _vibevoice_processor, _vibevoice_model
     
     if not USE_NEURAL_TTS:
         return None, None, None
+    
+    # Use runtime config voice if not specified
+    if voice_name is None:
+        voice_name = runtime_config.vibevoice_voice
     
     with _vibevoice_lock:
         if _vibevoice_model is None:
@@ -1286,16 +1725,6 @@ def get_vibevoice_tts():
                 _vibevoice_model.eval()
                 _vibevoice_model.set_ddpm_inference_steps(num_steps=5)  # Fast inference
                 
-                # Load voice preset
-                voice_file = VIBEVOICE_VOICES_PATH / f"{VIBEVOICE_DEFAULT_VOICE}.pt"
-                if voice_file.exists():
-                    target_device = device if device == "cuda" else "cpu"
-                    _vibevoice_voice_preset = torch.load(str(voice_file), map_location=target_device, weights_only=False)
-                    print(f"[TTS] Loaded voice preset: {VIBEVOICE_DEFAULT_VOICE}")
-                else:
-                    print(f"[TTS] Voice preset not found at {voice_file}, model may not work properly")
-                    _vibevoice_voice_preset = None
-                
                 print("[TTS] VibeVoice-Realtime-0.5B loaded successfully")
                 
             except ImportError as e:
@@ -1309,7 +1738,13 @@ def get_vibevoice_tts():
                 traceback.print_exc()
                 return None, None, None
         
-        return _vibevoice_processor, _vibevoice_model, _vibevoice_voice_preset
+        # Load voice preset (dynamically based on voice_name)
+        voice_preset = _load_vibevoice_voice(voice_name)
+        if voice_preset is None:
+            # Fallback to default voice
+            voice_preset = _load_vibevoice_voice(VIBEVOICE_DEFAULT_VOICE)
+        
+        return _vibevoice_processor, _vibevoice_model, voice_preset
 
 
 def synthesize_with_neural_tts(text: str) -> bytes | None:
@@ -1676,7 +2111,10 @@ class ModelManager:
     
     def transcribe_audio(self, audio_array: np.ndarray, sample_rate: int) -> str:
         """Transcribe audio using the loaded STT model (Vosk or Wav2Vec2)."""
-        if self.use_vosk and self.vosk_model is not None:
+        # Use runtime config for STT engine selection
+        use_vosk = runtime_config.stt_engine == "vosk"
+        
+        if use_vosk and self.vosk_model is not None:
             return self._transcribe_with_vosk(audio_array, sample_rate)
         elif self.stt_model is not None and self.stt_processor is not None:
             return self._transcribe_with_wav2vec2(audio_array, sample_rate)
@@ -1863,9 +2301,13 @@ async def synthesize_with_edge_tts(text: str) -> bytes | None:
     if not EDGE_TTS_ENABLED:
         return None
     try:
+        # Use runtime config for voice selection
+        voice_key = runtime_config.edge_tts_voice
+        voice = EDGE_TTS_AVAILABLE_VOICES.get(voice_key, EDGE_TTS_ACTIVE_VOICE)
+        
         communicate = edge_tts.Communicate(
             text,
-            EDGE_TTS_ACTIVE_VOICE,
+            voice,
             rate=EDGE_TTS_RATE,
             volume=EDGE_TTS_VOLUME,
             pitch=EDGE_TTS_PITCH,
@@ -2166,9 +2608,9 @@ async def handle_user_turn(
         input_ids=input_ids,
         attention_mask=attention_mask,
         streamer=streamer,
-        max_new_tokens=LLM_MAX_NEW_TOKENS,
+        max_new_tokens=runtime_config.llm_max_tokens,
         do_sample=True,
-        temperature=LLM_TEMPERATURE,
+        temperature=runtime_config.llm_temperature,
         top_p=LLM_TOP_P,
         repetition_penalty=LLM_REPETITION_PENALTY,
         pad_token_id=model_manager.llm_tokenizer.pad_token_id,
@@ -2252,18 +2694,24 @@ async def generate_audio_chunk(text: str):
     if not normalized:
         return None
 
-    # Priority: SpeechT5 (fast + clear) > Edge TTS (good quality) > pyttsx3 (offline)
-    if USE_NEURAL_TTS:
+    # Use runtime config to determine TTS engine
+    tts_engine = runtime_config.tts_engine
+    
+    if tts_engine == "vibevoice":
         wav_bytes = await asyncio.to_thread(synthesize_with_neural_tts, normalized)
         if wav_bytes:
             return base64.b64encode(wav_bytes).decode("utf-8")
-        # Fallback to Edge TTS if SpeechT5 fails
-        print("[TTS] SpeechT5 failed, falling back to Edge TTS")
+        # Fallback to Edge TTS if VibeVoice fails
+        print("[TTS] VibeVoice failed, falling back to Edge TTS")
+        tts_engine = "edge"
     
-    if not USE_PYTTSX3:
+    if tts_engine == "edge":
         wav_bytes = await synthesize_with_edge_tts(normalized)
-    else:
+    elif tts_engine == "pyttsx3":
         wav_bytes = await asyncio.to_thread(synthesize_with_pyttsx3, normalized)
+    else:
+        # Default fallback to edge
+        wav_bytes = await synthesize_with_edge_tts(normalized)
 
     if not wav_bytes:
         return None
@@ -2383,6 +2831,54 @@ async def websocket_endpoint(websocket: WebSocket):
         # Unload models if no more sessions
         model_manager.unload_models()
         print(f"📊 Active sessions: {len(active_sessions)}")
+
+
+# --- Static File Serving (must be AFTER all API routes) ---
+# These catch-all routes serve the frontend and must come last so they don't
+# intercept the more specific /api/* routes defined above.
+
+@app.get("/")
+async def serve_index():
+    """Serve the main index.html page."""
+    response = FileResponse(PROJECT_ROOT / "index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.get("/{filename:path}")
+async def serve_static(filename: str):
+    """Serve static files (JS, CSS, etc.) or fall back to index.html for SPA routing."""
+    # Securely resolve the requested path
+    try:
+        # Ensure the provided filename is treated as a relative path segment
+        # Strip any leading path separators so we never interpret it as absolute
+        safe_filename = filename.lstrip("/\\")
+        candidate_path = (PROJECT_ROOT / safe_filename).resolve()
+        # Only allow serving files that reside inside PROJECT_ROOT
+        try:
+            # Use Path.relative_to on resolved paths to enforce containment
+            candidate_path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            # Path is outside PROJECT_ROOT; fall back to index.html
+            response = FileResponse(PROJECT_ROOT / "index.html")
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return response
+        if candidate_path.exists() and candidate_path.is_file():
+            response = FileResponse(candidate_path)
+            # No cache for HTML/JS files to ensure latest version
+            if safe_filename.endswith(('.html', '.js', '.css')):
+                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            return response
+    except Exception:
+        # Any error (invalid path, permission, etc) falls back
+        pass
+    response = FileResponse(PROJECT_ROOT / "index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 if __name__ == "__main__":

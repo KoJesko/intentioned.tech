@@ -679,6 +679,166 @@
             width: 16px;
             height: 16px;
         }
+
+        /* Settings Card Styles */
+        .settings-section {
+            margin-bottom: 16px;
+        }
+
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .settings-select {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--card-secondary);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .settings-select:hover {
+            border-color: var(--accent);
+        }
+
+        .settings-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .settings-input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--card-secondary);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+        }
+
+        .settings-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .settings-slider {
+            width: 100%;
+            margin-top: 4px;
+        }
+
+        .slider-value {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Results List */
+        .results-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 8px;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background: var(--card-secondary);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.75rem;
+        }
+
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .result-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .result-score {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .result-date {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .result-btn {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            background: var(--card-hover);
+            color: var(--text-secondary);
+        }
+
+        .result-btn:hover {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .result-btn.delete:hover {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding: 4px 0;
+        }
+
+        .collapsible-header:hover {
+            color: var(--accent);
+        }
+
+        .collapsible-content {
+            display: none;
+            padding-top: 12px;
+        }
+
+        .collapsible-content.open {
+            display: block;
+        }
+
+        .collapse-icon {
+            transition: transform 0.2s ease;
+        }
+
+        .collapse-icon.open {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 <body>
@@ -744,6 +904,92 @@
                     <button id="endSessionBtn" class="control-btn danger full-width">
                         📊 End Session & Analyze
                     </button>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="card">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h3 class="card-title" style="margin-bottom: 0;">⚙️ Settings</h3>
+                    <span class="collapse-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <!-- TTS Settings -->
+                    <div class="settings-section">
+                        <label class="settings-label">Text-to-Speech Engine</label>
+                        <select id="ttsEngineSelect" class="settings-select">
+                            <option value="vibevoice">VibeVoice (Neural)</option>
+                            <option value="edge">Edge TTS</option>
+                            <option value="pyttsx3">pyttsx3 (Offline)</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-section" id="vibevoiceVoiceSection">
+                        <label class="settings-label">VibeVoice Voice</label>
+                        <select id="vibevoiceVoiceSelect" class="settings-select">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="settings-section" id="edgeVoiceSection" style="display: none;">
+                        <label class="settings-label">Edge TTS Voice</label>
+                        <select id="edgeVoiceSelect" class="settings-select">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <!-- STT Settings -->
+                    <div class="settings-section">
+                        <label class="settings-label">Speech-to-Text Engine</label>
+                        <select id="sttEngineSelect" class="settings-select">
+                            <option value="wav2vec2">Wav2Vec2 (Default)</option>
+                            <option value="vosk">Vosk</option>
+                        </select>
+                    </div>
+
+                    <!-- LLM Settings -->
+                    <div class="settings-section">
+                        <label class="settings-label">LLM Max Tokens</label>
+                        <div class="settings-row">
+                            <input type="range" id="maxTokensSlider" class="settings-slider" min="32" max="512" value="150">
+                            <span class="slider-value" id="maxTokensValue">150</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <label class="settings-label">LLM Temperature</label>
+                        <div class="settings-row">
+                            <input type="range" id="temperatureSlider" class="settings-slider" min="0" max="100" value="70">
+                            <span class="slider-value" id="temperatureValue">0.7</span>
+                        </div>
+                    </div>
+
+                    <button id="saveSettingsBtn" class="control-btn primary full-width" style="margin-top: 12px;">
+                        💾 Save Settings
+                    </button>
+                </div>
+            </div>
+
+            <!-- Session Results -->
+            <div class="card">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h3 class="card-title" style="margin-bottom: 0;">📁 Saved Results</h3>
+                    <span class="collapse-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="controls-grid" style="margin-bottom: 8px;">
+                        <button id="refreshResultsBtn" class="control-btn secondary">🔄 Refresh</button>
+                        <button id="exportAllBtn" class="control-btn secondary">📥 Export All</button>
+                        <input type="file" id="importResultFile" accept=".csv" style="display: none;">
+                        <button id="importResultBtn" class="control-btn secondary full-width" onclick="document.getElementById('importResultFile').click()">
+                            📤 Import CSV
+                        </button>
+                    </div>
+                    <div class="results-list" id="resultsList">
+                        <div style="text-align: center; color: var(--text-muted); font-size: 0.75rem; padding: 12px;">
+                            No saved results yet
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -859,6 +1105,266 @@
         </div>
     </footer>
 
-    <script src="script.js?v=12"></script>
+    <script src="script.js?v=13"></script>
+    <script>
+        // --- Settings Management ---
+        function toggleCollapsible(header) {
+            const content = header.nextElementSibling;
+            const icon = header.querySelector('.collapse-icon');
+            content.classList.toggle('open');
+            icon.classList.toggle('open');
+        }
+
+        // Initialize settings UI
+        async function initSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                const opts = data.options || data.available || {};
+                
+                // Populate TTS engine (API uses id "edge" not "edge_tts")
+                document.getElementById('ttsEngineSelect').value = data.current.tts_engine || 'vibevoice';
+                
+                // Populate voice dropdowns
+                const vibevoiceSelect = document.getElementById('vibevoiceVoiceSelect');
+                vibevoiceSelect.innerHTML = '';
+                (opts.vibevoice_voices || []).forEach(voice => {
+                    const opt = document.createElement('option');
+                    opt.value = voice.id;
+                    opt.textContent = voice.name;
+                    vibevoiceSelect.appendChild(opt);
+                });
+                vibevoiceSelect.value = data.current.vibevoice_voice || '';
+                
+                const edgeSelect = document.getElementById('edgeVoiceSelect');
+                edgeSelect.innerHTML = '';
+                (opts.edge_tts_voices || opts.edge_voices || []).forEach(voice => {
+                    const opt = document.createElement('option');
+                    opt.value = voice.id;
+                    opt.textContent = voice.name;
+                    edgeSelect.appendChild(opt);
+                });
+                edgeSelect.value = data.current.edge_tts_voice || '';
+                
+                // STT engine
+                document.getElementById('sttEngineSelect').value = data.current.stt_engine || 'wav2vec2';
+                
+                // LLM settings
+                document.getElementById('maxTokensSlider').value = data.current.llm_max_tokens || 150;
+                document.getElementById('maxTokensValue').textContent = data.current.llm_max_tokens || 150;
+                
+                const temp = data.current.llm_temperature || 0.7;
+                document.getElementById('temperatureSlider').value = Math.round(temp * 100);
+                document.getElementById('temperatureValue').textContent = temp.toFixed(1);
+                
+                // Show/hide voice sections based on TTS engine
+                updateVoiceSections();
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+            }
+        }
+
+        function updateVoiceSections() {
+            const engine = document.getElementById('ttsEngineSelect').value;
+            document.getElementById('vibevoiceVoiceSection').style.display = engine === 'vibevoice' ? 'block' : 'none';
+            document.getElementById('edgeVoiceSection').style.display = engine === 'edge' || engine === 'edge_tts' ? 'block' : 'none';
+        }
+
+        document.getElementById('ttsEngineSelect').addEventListener('change', updateVoiceSections);
+
+        document.getElementById('maxTokensSlider').addEventListener('input', (e) => {
+            document.getElementById('maxTokensValue').textContent = e.target.value;
+        });
+
+        document.getElementById('temperatureSlider').addEventListener('input', (e) => {
+            document.getElementById('temperatureValue').textContent = (e.target.value / 100).toFixed(1);
+        });
+
+        document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+            const settings = {
+                tts_engine: document.getElementById('ttsEngineSelect').value,
+                vibevoice_voice: document.getElementById('vibevoiceVoiceSelect').value,
+                edge_tts_voice: document.getElementById('edgeVoiceSelect').value,
+                stt_engine: document.getElementById('sttEngineSelect').value,
+                llm_max_tokens: parseInt(document.getElementById('maxTokensSlider').value),
+                llm_temperature: parseFloat(document.getElementById('temperatureSlider').value) / 100
+            };
+            
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    alert('Settings saved successfully!');
+                } else {
+                    alert('Failed to save settings: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Failed to save settings: ' + err.message);
+            }
+        });
+
+        // --- Session Results Management ---
+        async function loadResultsList() {
+            try {
+                const response = await fetch('/api/results');
+                const data = await response.json();
+                const listEl = document.getElementById('resultsList');
+                
+                if (!data.results || data.results.length === 0) {
+                    listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem; padding: 12px;">No saved results yet</div>';
+                    return;
+                }
+                
+                listEl.innerHTML = '';
+                data.results.forEach(result => {
+                    const item = document.createElement('div');
+                    item.className = 'result-item';
+                    item.innerHTML = `
+                        <div class="result-info">
+                            <span class="result-score">Score: ${result.overall_score}</span>
+                            <span class="result-date">${result.scenario} • ${new Date(result.timestamp).toLocaleString()}</span>
+                        </div>
+                        <div class="result-actions">
+                            <button class="result-btn" onclick="viewResult('${result.filename}')">View</button>
+                            <button class="result-btn" onclick="exportResult('${result.filename}')">📥</button>
+                            <button class="result-btn delete" onclick="deleteResult('${result.filename}')">🗑️</button>
+                        </div>
+                    `;
+                    listEl.appendChild(item);
+                });
+            } catch (err) {
+                console.error('Failed to load results:', err);
+            }
+        }
+
+        async function viewResult(filename) {
+            try {
+                const response = await fetch('/api/results/' + encodeURIComponent(filename));
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                // Display in the analysis modal
+                document.getElementById('analysisModal').classList.add('active');
+                const contentEl = document.getElementById('analysisContent');
+                contentEl.innerHTML = generateAnalysisHTML(data.result);
+            } catch (err) {
+                alert('Failed to load result: ' + err.message);
+            }
+        }
+
+        function exportResult(filename) {
+            window.open('/api/results/export/' + encodeURIComponent(filename), '_blank');
+        }
+
+        async function deleteResult(filename) {
+            if (!confirm('Delete this result?')) return;
+            try {
+                const response = await fetch('/api/results/' + encodeURIComponent(filename), { method: 'DELETE' });
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    loadResultsList();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (err) {
+                alert('Failed to delete: ' + err.message);
+            }
+        }
+
+        document.getElementById('refreshResultsBtn').addEventListener('click', loadResultsList);
+
+        document.getElementById('exportAllBtn').addEventListener('click', () => {
+            window.open('/api/results/export-all', '_blank');
+        });
+
+        document.getElementById('importResultFile').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/api/results/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    alert('Imported successfully!');
+                    loadResultsList();
+                } else {
+                    alert('Import failed: ' + data.error);
+                }
+            } catch (err) {
+                alert('Import failed: ' + err.message);
+            }
+            e.target.value = '';
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initSettings();
+            loadResultsList();
+        });
+
+        // Helper to generate analysis HTML (used by both live analysis and viewing saved results)
+        function generateAnalysisHTML(result) {
+            if (!result) return '<p>No analysis data</p>';
+            
+            const scoreClass = result.overall_score >= 70 ? 'success' : result.overall_score >= 50 ? 'warning' : 'danger';
+            
+            return `
+                <div class="analysis-score" style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 3rem; font-weight: 700; color: var(--${scoreClass});">${result.overall_score}</div>
+                    <div style="color: var(--text-muted);">Overall Score</div>
+                </div>
+                
+                <div class="analysis-categories">
+                    ${result.filler_words ? `
+                    <div class="analysis-item">
+                        <strong>Filler Words:</strong> ${result.filler_words.count} detected (${result.filler_words.score})
+                        <div style="color: var(--text-muted); font-size: 0.85rem;">${JSON.stringify(result.filler_words.details)}</div>
+                    </div>` : ''}
+                    
+                    ${result.delivery ? `
+                    <div class="analysis-item">
+                        <strong>Delivery:</strong> ${result.delivery.score}
+                        <div style="color: var(--text-muted); font-size: 0.85rem;">${result.delivery.feedback}</div>
+                    </div>` : ''}
+                    
+                    ${result.tone ? `
+                    <div class="analysis-item">
+                        <strong>Tone:</strong> ${result.tone.score}
+                        <div style="color: var(--text-muted); font-size: 0.85rem;">${result.tone.feedback}</div>
+                    </div>` : ''}
+                    
+                    ${result.eye_contact ? `
+                    <div class="analysis-item">
+                        <strong>Eye Contact:</strong> ${result.eye_contact.percentage.toFixed(1)}% (${result.eye_contact.score})
+                        <div style="color: var(--text-muted); font-size: 0.85rem;">${result.eye_contact.feedback}</div>
+                    </div>` : ''}
+                    
+                    ${result.speaking_pace ? `
+                    <div class="analysis-item">
+                        <strong>Speaking Pace:</strong> ${result.speaking_pace.avg_wpm.toFixed(0)} WPM (${result.speaking_pace.score})
+                        <div style="color: var(--text-muted); font-size: 0.85rem;">${result.speaking_pace.feedback}</div>
+                    </div>` : ''}
+                    
+                    ${result.ai_summary ? `
+                    <div class="analysis-item" style="margin-top: 16px; padding: 12px; background: var(--accent-light); border-radius: 8px;">
+                        <strong>AI Summary:</strong>
+                        <div style="margin-top: 8px; white-space: pre-wrap;">${result.ai_summary}</div>
+                    </div>` : ''}
+                </div>
+            `;
+        }
+    </script>
 </body>
 </html>
