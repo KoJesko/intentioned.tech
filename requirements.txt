@@ -14,7 +14,7 @@ optimum>=1.26.0
 # facebook/wav2vec2-large-960h-lv60-self loaded via transformers
 
 # Text-to-Speech
-TTS>=0.22.0  # Coqui TTS - ultra-natural neural voice synthesis
+# Bark TTS (suno/bark-small) - ultra-natural neural voice, loaded via transformers
 edge-tts>=7.2.7  # Microsoft Edge TTS (fallback)
 pyttsx3>=2.90  # Offline TTS (last resort fallback)
 

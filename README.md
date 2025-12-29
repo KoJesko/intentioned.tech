@@ -78,7 +78,7 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 
 | LLM | Qwen2.5-3B-Instruct (4-bit quantized) |
 
-| TTS | Coqui TTS VITS (ultra-natural neural voice) |
+| TTS | Bark (Suno AI - ultra-natural neural voice) |
 
 | TTS Fallback | Microsoft Edge TTS / pyttsx3 |
 

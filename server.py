@@ -1219,74 +1219,83 @@ EDGE_TTS_VOLUME = os.getenv("EDGE_TTS_VOLUME", "+0%")
 EDGE_TTS_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz")
 EDGE_TTS_ACTIVE_VOICE = _resolve_edge_voice(os.getenv("EDGE_TTS_VOICE"))
 
-# --- Coqui XTTS-v2 (Ultra-natural neural TTS) ---
-# XTTS-v2 provides the most natural-sounding voice synthesis
-# Set USE_COQUI_TTS=true for best quality (requires ~2GB VRAM)
-USE_COQUI_TTS = os.getenv("USE_COQUI_TTS", "true").lower() in {"1", "true", "yes"}
-COQUI_TTS_MODEL = os.getenv("COQUI_TTS_MODEL", "tts_models/en/ljspeech/vits")  # Fast, natural VITS model
-# Alternative high-quality models:
-# "tts_models/en/ljspeech/tacotron2-DDC" - Classic natural sound
-# "tts_models/en/vctk/vits" - Multi-speaker with accents
-# "tts_models/multilingual/multi-dataset/xtts_v2" - Best quality but slower
-COQUI_TTS_SPEAKER = os.getenv("COQUI_TTS_SPEAKER", None)  # For multi-speaker models
+# --- Bark TTS (Ultra-natural neural TTS from Suno AI) ---
+# Bark produces the most natural-sounding speech with emotion and intonation
+# Set USE_BARK_TTS=true for best quality (requires ~4GB VRAM)
+USE_BARK_TTS = os.getenv("USE_BARK_TTS", "true").lower() in {"1", "true", "yes"}
+# Bark voice presets - see https://suno-ai.notion.site/8b8e8749ed514b0cbf3f699013548683
+# Options: "v2/en_speaker_0" through "v2/en_speaker_9" for different voices
+BARK_VOICE_PRESET = os.getenv("BARK_VOICE_PRESET", "v2/en_speaker_6")  # Clear female voice
 
-# Coqui TTS singleton (loaded lazily)
-_coqui_tts_model = None
-_coqui_tts_lock = Lock()
+# Bark TTS models (loaded lazily)
+_bark_processor = None
+_bark_model = None
+_bark_lock = Lock()
 
 
-def get_coqui_tts():
-    """Get or initialize Coqui TTS model (lazy loading)."""
-    global _coqui_tts_model
+def get_bark_tts():
+    """Get or initialize Bark TTS models (lazy loading)."""
+    global _bark_processor, _bark_model
     
-    if not USE_COQUI_TTS:
-        return None
+    if not USE_BARK_TTS:
+        return None, None
     
-    with _coqui_tts_lock:
-        if _coqui_tts_model is None:
+    with _bark_lock:
+        if _bark_model is None:
             try:
-                from TTS.api import TTS
-                print(f"\ud83c\udfa4 Loading Coqui TTS: {COQUI_TTS_MODEL}...")
+                from transformers import AutoProcessor, BarkModel
+                print(f"\ud83c\udfa4 Loading Bark TTS (ultra-natural voice synthesis)...")
                 
-                # Load model (GPU if available)
-                _coqui_tts_model = TTS(model_name=COQUI_TTS_MODEL, progress_bar=True)
+                # Load processor and model
+                _bark_processor = AutoProcessor.from_pretrained("suno/bark-small")
+                _bark_model = BarkModel.from_pretrained(
+                    "suno/bark-small",
+                    torch_dtype=torch_dtype,
+                ).to(device)
+                _bark_model.eval()
                 
-                # Move to GPU if available
-                if torch.cuda.is_available():
-                    _coqui_tts_model.to(device)
-                
-                print(f"\u2705 Coqui TTS loaded successfully")
-            except ImportError:
-                print("\u26a0\ufe0f Coqui TTS not installed. Run: pip install TTS")
-                return None
+                print(f"\u2705 Bark TTS loaded successfully (voice: {BARK_VOICE_PRESET})")
+            except ImportError as e:
+                print(f"\u26a0\ufe0f Bark TTS import failed: {e}")
+                return None, None
             except Exception as e:
-                print(f"\u26a0\ufe0f Failed to load Coqui TTS: {e}")
-                return None
+                print(f"\u26a0\ufe0f Failed to load Bark TTS: {e}")
+                return None, None
         
-        return _coqui_tts_model
+        return _bark_processor, _bark_model
 
 
-def synthesize_with_coqui_tts(text: str) -> bytes | None:
-    """Synthesize speech using Coqui TTS (ultra-natural neural TTS)."""
+def synthesize_with_bark_tts(text: str) -> bytes | None:
+    """Synthesize speech using Bark TTS (ultra-natural neural TTS)."""
     if not text.strip():
         return None
     
-    tts = get_coqui_tts()
-    if tts is None:
+    processor, model = get_bark_tts()
+    if processor is None or model is None:
         return None
     
     try:
-        # Generate to temporary file
+        # Prepare inputs
+        inputs = processor(text, voice_preset=BARK_VOICE_PRESET, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        
+        # Generate speech
+        with torch.no_grad():
+            audio_array = model.generate(**inputs)
+        
+        # Convert to numpy
+        audio_array = audio_array.cpu().numpy().squeeze()
+        
+        # Save to temporary WAV file
+        sample_rate = model.generation_config.sample_rate
+        
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             tmp_path = tmp_file.name
         
-        # Synthesize speech
-        if COQUI_TTS_SPEAKER and hasattr(tts, 'speakers') and tts.speakers:
-            tts.tts_to_file(text=text, file_path=tmp_path, speaker=COQUI_TTS_SPEAKER)
-        else:
-            tts.tts_to_file(text=text, file_path=tmp_path)
+        # Write WAV file
+        sf.write(tmp_path, audio_array, sample_rate)
         
-        # Read and convert audio
+        # Read and convert
         with open(tmp_path, 'rb') as f:
             audio_bytes = f.read()
         
@@ -1301,7 +1310,7 @@ def synthesize_with_coqui_tts(text: str) -> bytes | None:
         return wav_bytes
         
     except Exception as e:
-        print(f"\u26a0\ufe0f Coqui TTS synthesis failed: {e}")
+        print(f"\u26a0\ufe0f Bark TTS synthesis failed: {e}")
         return None
 
 # --- pyttsx3 (offline) TTS Configuration ---
@@ -1712,8 +1721,8 @@ else:
     print(f"🎤 STT Engine: Wav2Vec2 (CTC-based, zero hallucination)")
 
 # TTS Engine info
-if USE_COQUI_TTS:
-    print(f"🎵 TTS Engine: Coqui TTS (ultra-natural) - Model: {COQUI_TTS_MODEL}")
+if USE_BARK_TTS:
+    print(f"🎵 TTS Engine: Bark (ultra-natural) - Voice: {BARK_VOICE_PRESET}")
 elif USE_PYTTSX3:
     print(f"🎙️ TTS Engine: pyttsx3 (offline) - Rate: {PYTTSX3_RATE} WPM")
 else:
@@ -2148,13 +2157,13 @@ async def generate_audio_chunk(text: str):
     if not normalized:
         return None
 
-    # Priority: Coqui TTS (best quality) > Edge TTS (good quality) > pyttsx3 (offline)
-    if USE_COQUI_TTS:
-        wav_bytes = await asyncio.to_thread(synthesize_with_coqui_tts, normalized)
+    # Priority: Bark TTS (best quality) > Edge TTS (good quality) > pyttsx3 (offline)
+    if USE_BARK_TTS:
+        wav_bytes = await asyncio.to_thread(synthesize_with_bark_tts, normalized)
         if wav_bytes:
             return base64.b64encode(wav_bytes).decode("utf-8")
-        # Fallback to Edge TTS if Coqui fails
-        print("\u26a0\ufe0f Coqui TTS failed, falling back to Edge TTS")
+        # Fallback to Edge TTS if Bark fails
+        print("⚠️ Bark TTS failed, falling back to Edge TTS")
     
     if not USE_PYTTSX3:
         wav_bytes = await synthesize_with_edge_tts(normalized)
