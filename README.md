@@ -78,7 +78,7 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 
 | LLM | Qwen2.5-3B-Instruct (4-bit quantized) |
 
-| TTS | SpeechT5 (Microsoft - fast neural voice) |
+| TTS | VibeVoice-Realtime-0.5B (Microsoft - natural expressive voice) |
 
 | TTS Fallback | Microsoft Edge TTS / pyttsx3 |
 

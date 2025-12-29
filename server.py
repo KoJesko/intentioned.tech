@@ -1224,109 +1224,188 @@ EDGE_TTS_ACTIVE_VOICE = _resolve_edge_voice(os.getenv("EDGE_TTS_VOICE"))
 # Set USE_NEURAL_TTS=true for quality neural TTS (requires ~1GB VRAM)
 USE_NEURAL_TTS = os.getenv("USE_NEURAL_TTS", "true").lower() in {"1", "true", "yes"}
 
-# SpeechT5 models (loaded lazily)
-_speecht5_processor = None
-_speecht5_model = None
-_speecht5_vocoder = None
-_speecht5_embeddings = None
-_speecht5_lock = Lock()
+# VibeVoice Realtime models (loaded lazily)
+_vibevoice_processor = None
+_vibevoice_model = None
+_vibevoice_voice_preset = None
+_vibevoice_lock = Lock()
+
+# Path to VibeVoice repo and voice presets
+VIBEVOICE_REPO_PATH = PROJECT_ROOT / "vibevoice_repo"
+VIBEVOICE_VOICES_PATH = VIBEVOICE_REPO_PATH / "demo" / "voices" / "streaming_model"
+# Use a natural-sounding female voice by default
+VIBEVOICE_DEFAULT_VOICE = os.getenv("VIBEVOICE_VOICE", "en-Grace_woman")
 
 
-def get_speecht5_tts():
-    """Get or initialize SpeechT5 TTS models (lazy loading)."""
-    global _speecht5_processor, _speecht5_model, _speecht5_vocoder, _speecht5_embeddings
+def get_vibevoice_tts():
+    """Get or initialize VibeVoice Realtime TTS models (lazy loading)."""
+    global _vibevoice_processor, _vibevoice_model, _vibevoice_voice_preset
     
     if not USE_NEURAL_TTS:
-        return None, None, None, None
+        return None, None, None
     
-    with _speecht5_lock:
-        if _speecht5_model is None:
+    with _vibevoice_lock:
+        if _vibevoice_model is None:
             try:
-                from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
-                print("[TTS] Loading SpeechT5 (fast neural voice synthesis)...")
+                from vibevoice.modular.modeling_vibevoice_streaming_inference import VibeVoiceStreamingForConditionalGenerationInference
+                from vibevoice.processor.vibevoice_streaming_processor import VibeVoiceStreamingProcessor
                 
-                # Load processor, model, and vocoder
-                _speecht5_processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
-                _speecht5_model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts").to(device)
-                _speecht5_vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan").to(device)
+                print("[TTS] Loading VibeVoice-Realtime-0.5B (high-quality neural voice synthesis)...")
                 
-                # Use pre-computed speaker embeddings (female voice from CMU Arctic)
-                # This is a 512-dim x-vector embedding for a clear female voice
-                print("[TTS] Using pre-computed speaker embeddings...")
-                # Pre-computed x-vector for speaker "slt" (female) from CMU Arctic
-                speaker_embedding_values = [
-                    -0.0245, 0.0073, -0.0221, -0.0231, 0.0284, -0.0274, 0.0166, 0.0053,
-                    -0.0283, 0.0095, -0.0103, 0.0194, -0.0143, 0.0123, -0.0246, 0.0053,
-                    0.0124, -0.0114, 0.0184, -0.0063, 0.0094, 0.0175, -0.0215, 0.0134,
-                    -0.0085, 0.0025, -0.0165, 0.0095, -0.0054, 0.0184, -0.0124, 0.0064,
-                ] * 16  # Repeat to get 512 dimensions
-                _speecht5_embeddings = torch.tensor(speaker_embedding_values[:512]).unsqueeze(0).to(device)
+                # Load processor
+                _vibevoice_processor = VibeVoiceStreamingProcessor.from_pretrained("microsoft/VibeVoice-Realtime-0.5B")
                 
-                _speecht5_model.eval()
-                _speecht5_vocoder.eval()
+                # Determine dtype and attention implementation based on device
+                # Note: 'device' is a string ("cuda" or "cpu")
+                if device == "cuda":
+                    load_dtype = torch.bfloat16
+                    attn_impl = "sdpa"  # Use SDPA for broader compatibility (flash_attention_2 requires special install)
+                else:
+                    load_dtype = torch.float32
+                    attn_impl = "sdpa"
                 
-                print("[TTS] SpeechT5 loaded successfully")
+                print(f"[TTS] Using device: {device}, dtype: {load_dtype}, attention: {attn_impl}")
+                
+                # Load model
+                try:
+                    _vibevoice_model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
+                        "microsoft/VibeVoice-Realtime-0.5B",
+                        torch_dtype=load_dtype,
+                        device_map=device if device == "cuda" else "cpu",
+                        attn_implementation=attn_impl,
+                    )
+                except Exception as e:
+                    print(f"[TTS] Primary load failed: {e}, trying CPU fallback...")
+                    _vibevoice_model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
+                        "microsoft/VibeVoice-Realtime-0.5B",
+                        torch_dtype=torch.float32,
+                        device_map="cpu",
+                        attn_implementation="sdpa",
+                    )
+                
+                _vibevoice_model.eval()
+                _vibevoice_model.set_ddpm_inference_steps(num_steps=5)  # Fast inference
+                
+                # Load voice preset
+                voice_file = VIBEVOICE_VOICES_PATH / f"{VIBEVOICE_DEFAULT_VOICE}.pt"
+                if voice_file.exists():
+                    target_device = device if device == "cuda" else "cpu"
+                    _vibevoice_voice_preset = torch.load(str(voice_file), map_location=target_device, weights_only=False)
+                    print(f"[TTS] Loaded voice preset: {VIBEVOICE_DEFAULT_VOICE}")
+                else:
+                    print(f"[TTS] Voice preset not found at {voice_file}, model may not work properly")
+                    _vibevoice_voice_preset = None
+                
+                print("[TTS] VibeVoice-Realtime-0.5B loaded successfully")
+                
             except ImportError as e:
-                print(f"[TTS] SpeechT5 import failed: {e}")
-                return None, None, None, None
-            except Exception as e:
-                print(f"[TTS] Failed to load SpeechT5: {e}")
+                print(f"[TTS] VibeVoice import failed: {e}")
                 import traceback
                 traceback.print_exc()
-                return None, None, None, None
+                return None, None, None
+            except Exception as e:
+                print(f"[TTS] Failed to load VibeVoice: {e}")
+                import traceback
+                traceback.print_exc()
+                return None, None, None
         
-        return _speecht5_processor, _speecht5_model, _speecht5_vocoder, _speecht5_embeddings
+        return _vibevoice_processor, _vibevoice_model, _vibevoice_voice_preset
 
 
 def synthesize_with_neural_tts(text: str) -> bytes | None:
-    """Synthesize speech using SpeechT5 (fast, clear neural TTS)."""
+    """Synthesize speech using VibeVoice-Realtime-0.5B (natural, expressive TTS)."""
+    import copy
+    
     if not text.strip():
         return None
     
-    processor, model, vocoder, speaker_embeddings = get_speecht5_tts()
-    if processor is None or model is None or speaker_embeddings is None:
-        print("[TTS] SpeechT5 not fully loaded (missing embeddings)")
+    processor, model, voice_preset = get_vibevoice_tts()
+    if processor is None or model is None or voice_preset is None:
+        print("[TTS] VibeVoice not fully loaded")
         return None
     
     try:
-        # Process text
-        inputs = processor(text=text, return_tensors="pt").to(device)
+        # Prepare the text - VibeVoice expects clean text
+        clean_text = text.strip().replace("'", "'").replace('"', '"').replace('"', '"')
         
-        # Ensure speaker embeddings are on correct device
-        speaker_emb = speaker_embeddings.to(device)
+        # Determine target device (device is a string: "cuda" or "cpu")
+        target_device = device if device == "cuda" else "cpu"
         
-        # Generate speech
+        # Prepare inputs using cached voice prompt
+        inputs = processor.process_input_with_cached_prompt(
+            text=clean_text,
+            cached_prompt=voice_preset,
+            padding=True,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
+        
+        # Move tensors to target device
+        for k, v in inputs.items():
+            if torch.is_tensor(v):
+                inputs[k] = v.to(target_device)
+        
+        # Generate audio
         with torch.no_grad():
-            speech = model.generate_speech(inputs["input_ids"], speaker_emb, vocoder=vocoder)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=None,
+                cfg_scale=3.0,  # Classifier-free guidance scale
+                tokenizer=processor.tokenizer,
+                generation_config={'do_sample': False},
+                verbose=False,
+                all_prefilled_outputs=copy.deepcopy(voice_preset),
+            )
         
-        # Convert to numpy float32
-        audio_array = speech.cpu().float().numpy()
-        
-        # SpeechT5 outputs at 16kHz
-        sample_rate = 16000
-        
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-        
-        # Write WAV file
-        sf.write(tmp_path, audio_array.astype(np.float32), sample_rate)
-        
-        # Read audio bytes
-        with open(tmp_path, 'rb') as f:
-            audio_bytes = f.read()
-        
-        # Clean up
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-        
-        # Convert to consistent format
-        wav_bytes = convert_audio_to_wav(audio_bytes)
-        return wav_bytes
+        # Extract audio data
+        if outputs.speech_outputs and outputs.speech_outputs[0] is not None:
+            audio_tensor = outputs.speech_outputs[0]
+            
+            # Convert to numpy
+            if torch.is_tensor(audio_tensor):
+                audio_array = audio_tensor.cpu().float().numpy()
+            else:
+                audio_array = np.array(audio_tensor, dtype=np.float32)
+            
+            # Ensure 1D array
+            if audio_array.ndim > 1:
+                audio_array = audio_array.flatten()
+            
+            # Normalize audio to prevent clipping
+            max_val = np.max(np.abs(audio_array))
+            if max_val > 0:
+                audio_array = audio_array / max_val * 0.95
+            
+            # VibeVoice outputs at 24kHz
+            sample_rate = 24000
+            
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+            
+            # Write WAV file
+            sf.write(tmp_path, audio_array.astype(np.float32), sample_rate)
+            
+            # Read audio bytes
+            with open(tmp_path, 'rb') as f:
+                audio_bytes = f.read()
+            
+            # Clean up
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            
+            # Convert to consistent format
+            wav_bytes = convert_audio_to_wav(audio_bytes)
+            return wav_bytes
+        else:
+            print("[TTS] VibeVoice generated no audio output")
+            return None
         
     except Exception as e:
-        print(f"[TTS] SpeechT5 synthesis failed: {e}")
+        print(f"[TTS] VibeVoice synthesis failed: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # --- pyttsx3 (offline) TTS Configuration ---
