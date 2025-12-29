@@ -1244,7 +1244,7 @@ def get_bark_tts():
         if _bark_model is None:
             try:
                 from transformers import AutoProcessor, BarkModel
-                print(f"\ud83c\udfa4 Loading Bark TTS (ultra-natural voice synthesis)...")
+                print(f"[TTS] Loading Bark TTS (ultra-natural voice synthesis)...")
                 
                 # Load processor and model
                 _bark_processor = AutoProcessor.from_pretrained("suno/bark-small")
@@ -1254,12 +1254,12 @@ def get_bark_tts():
                 ).to(device)
                 _bark_model.eval()
                 
-                print(f"\u2705 Bark TTS loaded successfully (voice: {BARK_VOICE_PRESET})")
+                print(f"[TTS] Bark TTS loaded successfully (voice: {BARK_VOICE_PRESET})")
             except ImportError as e:
-                print(f"\u26a0\ufe0f Bark TTS import failed: {e}")
+                print(f"[TTS] Bark TTS import failed: {e}")
                 return None, None
             except Exception as e:
-                print(f"\u26a0\ufe0f Failed to load Bark TTS: {e}")
+                print(f"[TTS] Failed to load Bark TTS: {e}")
                 return None, None
         
         return _bark_processor, _bark_model
@@ -1283,8 +1283,8 @@ def synthesize_with_bark_tts(text: str) -> bytes | None:
         with torch.no_grad():
             audio_array = model.generate(**inputs)
         
-        # Convert to numpy
-        audio_array = audio_array.cpu().numpy().squeeze()
+        # Convert to numpy float32 (soundfile requires float32, not float16)
+        audio_array = audio_array.cpu().float().numpy().squeeze()
         
         # Save to temporary WAV file
         sample_rate = model.generation_config.sample_rate
@@ -1292,8 +1292,8 @@ def synthesize_with_bark_tts(text: str) -> bytes | None:
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             tmp_path = tmp_file.name
         
-        # Write WAV file
-        sf.write(tmp_path, audio_array, sample_rate)
+        # Write WAV file (ensure float32)
+        sf.write(tmp_path, audio_array.astype(np.float32), sample_rate)
         
         # Read and convert
         with open(tmp_path, 'rb') as f:
@@ -1310,7 +1310,7 @@ def synthesize_with_bark_tts(text: str) -> bytes | None:
         return wav_bytes
         
     except Exception as e:
-        print(f"\u26a0\ufe0f Bark TTS synthesis failed: {e}")
+        print(f"[TTS] Bark TTS synthesis failed: {e}")
         return None
 
 # --- pyttsx3 (offline) TTS Configuration ---
