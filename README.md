@@ -74,11 +74,13 @@ A self-hosted, open-source voice-powered AI assistant designed for social skills
 
 | Backend | FastAPI + Uvicorn |
 
-| STT | Vosk (offline, non-AI) or OpenAI Whisper |
+| STT | Wav2Vec2-large (CTC-based, zero hallucination) |
 
 | LLM | Qwen2.5-3B-Instruct (4-bit quantized) |
 
-| TTS | Microsoft Edge TTS (en-US-AriaNeural) |
+| TTS | Coqui TTS VITS (ultra-natural neural voice) |
+
+| TTS Fallback | Microsoft Edge TTS / pyttsx3 |
 
 | Eye Contact | face-api.js (vladmandic fork) |
 

@@ -188,13 +188,24 @@
         </p>
         
         <div class="warning-box">
-            <strong>Repeated Violation Transmission:</strong> If 3 or more similar safety violations are 
+            <strong>Repeated Violation Transmission:</strong> If 3 or more unique safety violations are 
             detected from the same session, a summary report is automatically transmitted to a separate 
-            "transmitted_to_host" folder for host/administrator review. This is designed to identify 
-            patterns of misuse and ensure platform safety. The transmitted reports are stored in:
+            "transmitted_to_host" folder for host/administrator review. Additionally, if 2 or more 
+            <strong>severe</strong> violations are detected, the session is immediately terminated and reported.
+            This is designed to identify patterns of misuse and ensure platform safety. The transmitted reports are stored in:
             <br><br>
             <code>[Documents]/simulation_safety_violations/transmitted_to_host/</code>
         </div>
+        
+        <h2>4. AI Processing</h2>
+        <p>The application uses multiple AI systems for different purposes:</p>
+        <ul>
+            <li><strong>Speech-to-Text (Wav2Vec2):</strong> Converts your voice to text locally - no audio sent externally</li>
+            <li><strong>Language Model (Qwen2.5-3B):</strong> Generates AI responses - runs entirely on your machine</li>
+            <li><strong>Text-to-Speech (Coqui TTS):</strong> Ultra-natural voice synthesis - processed locally</li>
+            <li><strong>Content Moderation:</strong> AI-based safety checks with severity rating - processed locally</li>
+            <li><strong>Uniqueness Analysis:</strong> Secondary AI check to determine if violations are unique</li>
+        </ul>
         
         <h2>4. Data Storage</h2>
         <p>All data is stored locally on your machine or server:</p>

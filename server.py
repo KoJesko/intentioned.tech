@@ -79,6 +79,7 @@ _violation_tracker: dict[str, list[dict]] = {}
 _violation_tracker_lock = Lock()
 VIOLATION_REPORT_THRESHOLD = 3  # Number of unique violations before reporting to host
 VIOLATION_STOP_THRESHOLD = 5  # Number of unique violations before stopping conversation
+SEVERE_VIOLATION_STOP_THRESHOLD = 2  # Number of severe violations before immediate shutdown
 
 import edge_tts
 import numpy as np
@@ -568,11 +569,65 @@ Respond with ONLY one word:
         return True
 
 
+def rate_violation_severity_with_ai(text: str, violation_reason: str) -> str:
+    """
+    Use a second AI call to rate the severity of a violation.
+    Returns: 'SEVERE', 'MODERATE', or 'MILD'
+    """
+    if not model_manager.is_loaded or model_manager.llm_model is None:
+        # Fallback: assume moderate if model not loaded
+        return "MODERATE"
+    
+    severity_prompt = [
+        {"role": "system", "content": """You are a content severity rater. Rate the severity of flagged content.
+
+Respond with ONLY one word:
+- "SEVERE" for: direct threats of violence, content sexualizing minors, instructions for weapons/bombs, calls for genocide/mass violence
+- "MODERATE" for: hate speech without violence calls, harassment, illegal activity requests, explicit adult content
+- "MILD" for: profanity, insults, rudeness, controversial opinions, minor policy violations
+
+Be strict about SEVERE - only the most dangerous content qualifies."""},
+        {"role": "user", "content": f"Flagged content: \"{text}\"\nFlag reason: {violation_reason}\n\nSeverity rating?"}
+    ]
+    
+    try:
+        input_ids = model_manager.llm_tokenizer.apply_chat_template(
+            severity_prompt,
+            return_tensors="pt",
+            add_generation_prompt=True,
+        ).to(device)
+        
+        with torch.no_grad():
+            outputs = model_manager.llm_model.generate(
+                input_ids,
+                max_new_tokens=10,
+                do_sample=False,
+                temperature=0.1,
+                pad_token_id=model_manager.llm_tokenizer.pad_token_id,
+            )
+        
+        response = model_manager.llm_tokenizer.decode(
+            outputs[0][input_ids.shape[1]:], 
+            skip_special_tokens=True
+        ).strip().upper()
+        
+        if "SEVERE" in response:
+            return "SEVERE"
+        elif "MILD" in response:
+            return "MILD"
+        else:
+            return "MODERATE"
+        
+    except Exception as e:
+        print(f"⚠️ AI severity rating failed: {e}")
+        return "MODERATE"
+
+
 def track_violation_for_repeat_detection(session_id: str, user_text: str, violation_reason: str) -> dict:
     """
     Track a violation and check if unique violations threshold is reached.
-    Uses AI to determine uniqueness of violations.
-    Returns dict with 'unique_count', 'should_report', and 'should_stop' flags.
+    Uses AI to determine uniqueness and severity of violations.
+    Returns dict with counts and stop flags.
     """
     import datetime
     
@@ -585,19 +640,28 @@ def track_violation_for_repeat_detection(session_id: str, user_text: str, violat
         # Use AI to check if this violation is unique
         is_unique = check_violation_uniqueness_with_ai(user_text, existing_violations)
         
+        # Use second AI to rate severity
+        severity = rate_violation_severity_with_ai(user_text, violation_reason)
+        print(f"📊 Violation severity rated as: {severity}")
+        
         new_violation = {
             "timestamp": datetime.datetime.now().isoformat(),
             "text": user_text,
             "reason": violation_reason,
-            "is_unique": is_unique
+            "is_unique": is_unique,
+            "severity": severity
         }
         _violation_tracker[session_id].append(new_violation)
         
         # Count unique violations
         unique_count = sum(1 for v in _violation_tracker[session_id] if v.get("is_unique", True))
         
+        # Count severe violations
+        severe_count = sum(1 for v in _violation_tracker[session_id] if v.get("severity") == "SEVERE")
+        
         should_report = unique_count >= VIOLATION_REPORT_THRESHOLD
         should_stop = unique_count >= VIOLATION_STOP_THRESHOLD
+        should_stop_severe = severe_count >= SEVERE_VIOLATION_STOP_THRESHOLD
         
         # Report to host at threshold
         if unique_count == VIOLATION_REPORT_THRESHOLD:
@@ -605,14 +669,24 @@ def track_violation_for_repeat_detection(session_id: str, user_text: str, violat
             print(f"⚠️ VIOLATION THRESHOLD REACHED: {unique_count} unique violations from session {session_id[:8]}")
             transmit_repeated_violations_to_host(session_id, unique_violations)
         
-        if should_stop:
-            print(f"🚨 CONVERSATION STOP THRESHOLD: {unique_count} unique violations from session {session_id[:8]}")
+        # Report severe violations immediately
+        if severity == "SEVERE":
+            severe_violations = [v for v in _violation_tracker[session_id] if v.get("severity") == "SEVERE"]
+            print(f"🚨 SEVERE VIOLATION: {severe_count} severe violation(s) from session {session_id[:8]}")
+            transmit_repeated_violations_to_host(session_id, severe_violations)
+        
+        if should_stop or should_stop_severe:
+            reason = "severe violations" if should_stop_severe else "unique violations"
+            print(f"🚨 CONVERSATION STOP: {reason} threshold reached for session {session_id[:8]}")
         
         return {
             "unique_count": unique_count,
+            "severe_count": severe_count,
             "is_unique": is_unique,
+            "severity": severity,
             "should_report": should_report,
-            "should_stop": should_stop
+            "should_stop": should_stop or should_stop_severe,
+            "should_stop_severe": should_stop_severe
         }
 
 
@@ -701,13 +775,26 @@ Respond with ONLY one of these formats:
   * Explicit sexual content involving minors
   * Detailed instructions for illegal activities (making weapons, drugs, etc.)
   * Severe hate speech calling for violence against groups
-  
+         ** As some people roleplaying may be residents of war zones, only flag direct calls for violence, not general war talk if the user indicates they have a history in a war zone only. 
+  * Immediate danger to self or others
+  * ANY FOREIGN LANGUAGE CONTENT from the AI agent in particular that is out of context or suspicious (log as serious violation) and immediately end the conversation with reason "UNSAFE: A serious hallucination has been prevented by the content moderation software, if this was done in error, please make an issue on our GitHub (this is a serious violation)". (This prevents AI STT models from acting in other languages) (The TTS model is in English only, so foreign language from user is acceptable, as long as the AI responds mostly in English. The user should not be trying to get a response from the AI in another language, however).
+  * Any other content that could cause genuine, serious harm and is outside the context of a social skills training application.
+- Make sure to mark serious violations with "this is a serious violation" in the reason, e.g. "UNSAFE: direct threats of violence (this is a serious violation)".
+- For non-serious content, mark as unsafe but mention that the violation is minor or moderate as you see fit, e.g. "UNSAFE: profanity and insults (this is a minor violation)". or "UNSAFE: hate speech without calls for violence (this is a moderate violation)".
+- Non-serious violations should not trigger conversation stops, only serious violations should unless 5 unique non-serious violations accumulate.
+- Non-serious violations include
+     * Profanity, insults, rudeness
+     * Controversial opinions (without calls for violence, typically SAFE, do not flag traditional politics as it is tracked by a microaggression tracker)
+     * Discussions of suicide or self-harm (without direct encouragement), typically SAFE if can be seen in a training aspect or a practice of a typical conversation, otherwise flag as "UNSAFE: suicide discussion within some to nearly sufficient check (this is a moderate violation)" or "UNSAFE: suicide discussion within nearly sufficient check (this is a minor violation)" depending on severity.
+         ** It is critical you log as noted above to not break the application in this context.
+     * AI responding with discussions of what they or others have done, particularly in training sessions, are normal, but if they are innapropriate or derailing or have hallucinations, log as e.g. "UNSAFE: Potential ERP/Hallucinating roleplay/Otherwise inappropriate roleplay (this is a minor violation)"
 Be VERY lenient. Users are practicing difficult conversations and may:
 - Express strong frustration, anger, or use profanity - this is SAFE
 - Discuss sensitive topics like conflict, discrimination, mental health - this is SAFE
 - Use harsh language, insults, or be rude - this is SAFE (it's practice)
 - Role-play as difficult characters - this is SAFE
 - Discuss controversial opinions - this is SAFE
+- Microaggressions are tracked separately - do not flag them here, this is SAFE
 
 Only flag content that represents GENUINE, SERIOUS harm. When in doubt, mark as SAFE."""},
         {"role": "user", "content": f"Recent conversation context:\n{recent_context}\n\nNew message to evaluate:\n\"{text}\"\n\nIs this message SAFE or UNSAFE?"}
@@ -1058,12 +1145,13 @@ HUGGINGFACE_TOKEN = os.getenv("HUGGING_FACE_HUB_TOKEN")
 
 # STT Configuration
 # USE_VOSK=true uses Vosk (non-AI, traditional speech recognition)
-# USE_VOSK=false uses Whisper (AI-based, more accurate but uses GPU)
-USE_VOSK = os.getenv("USE_VOSK", "true").lower() in {"1", "true", "yes"}
+# USE_VOSK=false uses Wav2Vec2 (AI-based, accurate, NO hallucinations)
+USE_VOSK = os.getenv("USE_VOSK", "false").lower() in {"1", "true", "yes"}
 VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", str(PROJECT_ROOT / "vosk-model-en-us-0.22"))
 
-# Fallback Whisper model if Vosk not available
-STT_DEFAULT_MODEL_ID = "openai/whisper-small"  # ~500MB vs ~3GB for large-v3
+# Wav2Vec2 model - CTC-based, zero hallucinations (doesn't generate text autoregressively)
+# Unlike Whisper, Wav2Vec2 directly maps audio frames to text - no "making up" words
+STT_DEFAULT_MODEL_ID = "facebook/wav2vec2-large-960h-lv60-self"  # ~1.2GB, very accurate
 
 LLM_MAX_NEW_TOKENS = 150  # Reduced for faster responses with smaller model
 LLM_TEMPERATURE = 0.65
@@ -1130,6 +1218,91 @@ EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+0%")
 EDGE_TTS_VOLUME = os.getenv("EDGE_TTS_VOLUME", "+0%")
 EDGE_TTS_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz")
 EDGE_TTS_ACTIVE_VOICE = _resolve_edge_voice(os.getenv("EDGE_TTS_VOICE"))
+
+# --- Coqui XTTS-v2 (Ultra-natural neural TTS) ---
+# XTTS-v2 provides the most natural-sounding voice synthesis
+# Set USE_COQUI_TTS=true for best quality (requires ~2GB VRAM)
+USE_COQUI_TTS = os.getenv("USE_COQUI_TTS", "true").lower() in {"1", "true", "yes"}
+COQUI_TTS_MODEL = os.getenv("COQUI_TTS_MODEL", "tts_models/en/ljspeech/vits")  # Fast, natural VITS model
+# Alternative high-quality models:
+# "tts_models/en/ljspeech/tacotron2-DDC" - Classic natural sound
+# "tts_models/en/vctk/vits" - Multi-speaker with accents
+# "tts_models/multilingual/multi-dataset/xtts_v2" - Best quality but slower
+COQUI_TTS_SPEAKER = os.getenv("COQUI_TTS_SPEAKER", None)  # For multi-speaker models
+
+# Coqui TTS singleton (loaded lazily)
+_coqui_tts_model = None
+_coqui_tts_lock = Lock()
+
+
+def get_coqui_tts():
+    """Get or initialize Coqui TTS model (lazy loading)."""
+    global _coqui_tts_model
+    
+    if not USE_COQUI_TTS:
+        return None
+    
+    with _coqui_tts_lock:
+        if _coqui_tts_model is None:
+            try:
+                from TTS.api import TTS
+                print(f"\ud83c\udfa4 Loading Coqui TTS: {COQUI_TTS_MODEL}...")
+                
+                # Load model (GPU if available)
+                _coqui_tts_model = TTS(model_name=COQUI_TTS_MODEL, progress_bar=True)
+                
+                # Move to GPU if available
+                if torch.cuda.is_available():
+                    _coqui_tts_model.to(device)
+                
+                print(f"\u2705 Coqui TTS loaded successfully")
+            except ImportError:
+                print("\u26a0\ufe0f Coqui TTS not installed. Run: pip install TTS")
+                return None
+            except Exception as e:
+                print(f"\u26a0\ufe0f Failed to load Coqui TTS: {e}")
+                return None
+        
+        return _coqui_tts_model
+
+
+def synthesize_with_coqui_tts(text: str) -> bytes | None:
+    """Synthesize speech using Coqui TTS (ultra-natural neural TTS)."""
+    if not text.strip():
+        return None
+    
+    tts = get_coqui_tts()
+    if tts is None:
+        return None
+    
+    try:
+        # Generate to temporary file
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+        
+        # Synthesize speech
+        if COQUI_TTS_SPEAKER and hasattr(tts, 'speakers') and tts.speakers:
+            tts.tts_to_file(text=text, file_path=tmp_path, speaker=COQUI_TTS_SPEAKER)
+        else:
+            tts.tts_to_file(text=text, file_path=tmp_path)
+        
+        # Read and convert audio
+        with open(tmp_path, 'rb') as f:
+            audio_bytes = f.read()
+        
+        # Clean up
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        
+        # Convert to consistent format
+        wav_bytes = convert_audio_to_wav(audio_bytes)
+        return wav_bytes
+        
+    except Exception as e:
+        print(f"\u26a0\ufe0f Coqui TTS synthesis failed: {e}")
+        return None
 
 # --- pyttsx3 (offline) TTS Configuration ---
 # Set USE_PYTTSX3=true to use offline TTS instead of Edge TTS
@@ -1318,7 +1491,7 @@ class ModelManager:
             if self.use_vosk:
                 self._load_vosk_model()
             else:
-                self._load_whisper_model()
+                self._load_wav2vec2_model()
             
             # Load LLM
             self.llm_tokenizer, self.llm_model, self.active_model_id = load_llm_stack(LLM_MODEL_ID)
@@ -1374,43 +1547,79 @@ class ModelManager:
             if zip_path.exists():
                 zip_path.unlink()
     
-    def _load_whisper_model(self):
-        """Load Whisper model as fallback."""
-        stt_model_id = os.getenv("STT_MODEL_ID", STT_DEFAULT_MODEL_ID)
-        print(f"Loading STT: {stt_model_id} (Whisper)...")
+    def _load_wav2vec2_model(self):
+        """Load Wav2Vec2 model - CTC-based, zero hallucinations."""
+        from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
         
-        self.stt_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        stt_model_id = os.getenv("STT_MODEL_ID", STT_DEFAULT_MODEL_ID)
+        print(f"Loading STT: {stt_model_id} (Wav2Vec2 - zero hallucination)...")
+        
+        self.stt_processor = Wav2Vec2Processor.from_pretrained(
+            stt_model_id,
+            revision=HF_MODEL_REVISION,
+        )
+        self.stt_model = Wav2Vec2ForCTC.from_pretrained(
             stt_model_id,
             torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-            use_safetensors=True,
             revision=HF_MODEL_REVISION,
         )
         self.stt_model.to(device)
-        self.stt_processor = AutoProcessor.from_pretrained(stt_model_id, revision=HF_MODEL_REVISION)
+        self.stt_model.eval()
         
-        self.stt_pipe = pipeline(
-            "automatic-speech-recognition",
-            model=self.stt_model,
-            tokenizer=self.stt_processor.tokenizer,
-            feature_extractor=self.stt_processor.feature_extractor,
-            max_new_tokens=STT_MAX_NEW_TOKENS,
-            chunk_length_s=STT_CHUNK_LENGTH_S,
-            stride_length_s=STT_STRIDE_LENGTH_S,
-            return_timestamps=True,
-            torch_dtype=torch_dtype,
-            device=device,
-        )
+        # No pipeline for Wav2Vec2 - we'll do direct inference
+        self.stt_pipe = None
+        print(f"✅ Wav2Vec2 loaded (CTC-based, no hallucinations)")
     
     def transcribe_audio(self, audio_array: np.ndarray, sample_rate: int) -> str:
-        """Transcribe audio using the loaded STT model (Vosk or Whisper)."""
+        """Transcribe audio using the loaded STT model (Vosk or Wav2Vec2)."""
         if self.use_vosk and self.vosk_model is not None:
             return self._transcribe_with_vosk(audio_array, sample_rate)
-        elif self.stt_pipe is not None:
-            stt_result = self.stt_pipe({"array": audio_array, "sampling_rate": sample_rate})
-            return aggregate_transcript(stt_result)
+        elif self.stt_model is not None and self.stt_processor is not None:
+            return self._transcribe_with_wav2vec2(audio_array, sample_rate)
         else:
             raise RuntimeError("No STT model loaded")
+    
+    def _transcribe_with_wav2vec2(self, audio_array: np.ndarray, sample_rate: int) -> str:
+        """Transcribe using Wav2Vec2 (CTC-based, zero hallucinations)."""
+        # Resample if needed
+        if sample_rate != 16000:
+            import torch.nn.functional as F
+            audio_tensor = torch.from_numpy(audio_array).float()
+            audio_tensor = F.interpolate(
+                audio_tensor.unsqueeze(0).unsqueeze(0),
+                size=int(len(audio_array) * 16000 / sample_rate),
+                mode="linear",
+                align_corners=False
+            ).squeeze().numpy()
+            audio_array = audio_tensor
+            sample_rate = 16000
+        
+        # Process audio
+        inputs = self.stt_processor(
+            audio_array,
+            sampling_rate=sample_rate,
+            return_tensors="pt",
+            padding=True
+        )
+        
+        input_values = inputs.input_values.to(device, dtype=torch_dtype)
+        
+        # Get logits
+        with torch.no_grad():
+            logits = self.stt_model(input_values).logits
+        
+        # Decode - CTC greedy decoding
+        predicted_ids = torch.argmax(logits, dim=-1)
+        transcription = self.stt_processor.batch_decode(predicted_ids)[0]
+        
+        # Clean up
+        text = clean_transcript_text(transcription)
+        
+        # Wav2Vec2 doesn't hallucinate, but filter empty/noise
+        if not text or len(text.strip()) < 2:
+            return ""
+        
+        return text
     
     def _transcribe_with_vosk(self, audio_array: np.ndarray, sample_rate: int) -> str:
         """Transcribe using Vosk (non-AI)."""
@@ -1500,10 +1709,12 @@ model_manager = ModelManager()
 if USE_VOSK and VOSK_AVAILABLE:
     print(f"🎤 STT Engine: Vosk (non-AI, offline)")
 else:
-    print(f"🎤 STT Engine: Whisper (AI-based)")
+    print(f"🎤 STT Engine: Wav2Vec2 (CTC-based, zero hallucination)")
 
 # TTS Engine info
-if USE_PYTTSX3:
+if USE_COQUI_TTS:
+    print(f"🎵 TTS Engine: Coqui TTS (ultra-natural) - Model: {COQUI_TTS_MODEL}")
+elif USE_PYTTSX3:
     print(f"🎙️ TTS Engine: pyttsx3 (offline) - Rate: {PYTTSX3_RATE} WPM")
 else:
     print(f"🎙️ TTS Engine: Edge TTS (natural) - Voice: {EDGE_TTS_ACTIVE_VOICE}")
@@ -1937,11 +2148,18 @@ async def generate_audio_chunk(text: str):
     if not normalized:
         return None
 
-    # Use pyttsx3 (offline) if enabled, otherwise fall back to Edge TTS
-    if USE_PYTTSX3:
-        wav_bytes = await asyncio.to_thread(synthesize_with_pyttsx3, normalized)
-    else:
+    # Priority: Coqui TTS (best quality) > Edge TTS (good quality) > pyttsx3 (offline)
+    if USE_COQUI_TTS:
+        wav_bytes = await asyncio.to_thread(synthesize_with_coqui_tts, normalized)
+        if wav_bytes:
+            return base64.b64encode(wav_bytes).decode("utf-8")
+        # Fallback to Edge TTS if Coqui fails
+        print("\u26a0\ufe0f Coqui TTS failed, falling back to Edge TTS")
+    
+    if not USE_PYTTSX3:
         wav_bytes = await synthesize_with_edge_tts(normalized)
+    else:
+        wav_bytes = await asyncio.to_thread(synthesize_with_pyttsx3, normalized)
 
     if not wav_bytes:
         return None

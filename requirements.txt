@@ -10,11 +10,18 @@ accelerate>=1.12.0
 bitsandbytes>=0.49.0
 optimum>=1.26.0
 
+# Speech-to-Text (Wav2Vec2 - zero hallucination CTC model)
+# facebook/wav2vec2-large-960h-lv60-self loaded via transformers
+
+# Text-to-Speech
+TTS>=0.22.0  # Coqui TTS - ultra-natural neural voice synthesis
+edge-tts>=7.2.7  # Microsoft Edge TTS (fallback)
+pyttsx3>=2.90  # Offline TTS (last resort fallback)
+
 # Audio Processing
 soundfile>=0.13.1
 librosa>=0.11.0
 scipy>=1.16.0
-edge-tts>=7.2.7
 vosk>=0.3.45
 
 # Data & Utilities
