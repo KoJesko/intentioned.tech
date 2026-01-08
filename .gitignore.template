@@ -147,6 +147,7 @@ noip-update.sh
 #   git update-index --assume-unchanged <filename>
 # -----------------------------------------------------------------------------
 # .gitignore
+session_results/
 
 # =============================================================================
 # END OF TEMPLATE
