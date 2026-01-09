@@ -1750,16 +1750,47 @@ function showSafetyViolation(message) {
     // Create a prominent warning message in the chat
     const warningDiv = document.createElement('div');
     warningDiv.className = 'message safety-warning';
-    warningDiv.innerHTML = `
-        <div class="role" style="color: #ef4444;">⚠️ Safety System</div>
-        <div style="background: rgba(239, 68, 68, 0.15); padding: 16px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);">
-            <strong>Conversation Stopped</strong><br>
-            <p style="margin: 8px 0;">${message}</p>
-            <p style="margin: 8px 0; font-size: 0.9em; color: #a0a0b0;">
-                Please click the <strong>🔄 Reset</strong> button to start a new conversation.
-            </p>
-        </div>
-    `;
+
+    // Role label
+    const roleDiv = document.createElement('div');
+    roleDiv.className = 'role';
+    roleDiv.style.color = '#ef4444;';
+    roleDiv.textContent = '⚠️ Safety System';
+
+    // Container for the warning content
+    const containerDiv = document.createElement('div');
+    containerDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+    containerDiv.style.padding = '16px';
+    containerDiv.style.borderRadius = '8px';
+    containerDiv.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+
+    const titleStrong = document.createElement('strong');
+    titleStrong.textContent = 'Conversation Stopped';
+
+    const messageP = document.createElement('p');
+    messageP.style.margin = '8px 0';
+    // Insert untrusted message as textContent to avoid XSS
+    messageP.textContent = message;
+
+    const infoP = document.createElement('p');
+    infoP.style.margin = '8px 0';
+    infoP.style.fontSize = '0.9em';
+    infoP.style.color = '#a0a0b0';
+    infoP.textContent = 'Please click the ';
+
+    const resetStrong = document.createElement('strong');
+    resetStrong.textContent = '🔄 Reset';
+    infoP.appendChild(resetStrong);
+    infoP.appendChild(document.createTextNode(' button to start a new conversation.'));
+
+    containerDiv.appendChild(titleStrong);
+    containerDiv.appendChild(document.createElement('br'));
+    containerDiv.appendChild(messageP);
+    containerDiv.appendChild(infoP);
+
+    warningDiv.appendChild(roleDiv);
+    warningDiv.appendChild(containerDiv);
+
     chatLog.appendChild(warningDiv);
     chatLog.scrollTop = chatLog.scrollHeight;
     
