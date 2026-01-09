@@ -279,3 +279,29 @@ Contributions are welcome! Please read our [Code of Conduct](code_of_conduct.htm
 
 - **Issues**: [GitHub Issues](https://github.com/KoJesko/intentioned.tech/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/KoJesko/intentioned.tech/discussions)
+## 📜 Third-Party Licenses & Attribution
+
+This software incorporates the following open-source components:
+
+| Component | License | Attribution |
+|-----------|---------|-------------|
+| **Google Gemma** | [Gemma Terms of Use](https://ai.google.dev/gemma/terms) | © Google LLC. Gemma is a family of open models by Google. |
+| **Qwen 2.5** | Apache 2.0 | © Alibaba Cloud. Qwen2.5 LLM series. |
+| **NVIDIA Parakeet** | CC-BY-4.0 | © NVIDIA Corporation. Parakeet TDT speech recognition. |
+| **Kokoro TTS** | Apache 2.0 | StyleTTS2-based text-to-speech by hexgrad. |
+| **Vosk** | Apache 2.0 | © Alpha Cephei Inc. Offline speech recognition. |
+| **face-api.js** | MIT | © vladmandic. Face detection and analysis. |
+| **FastAPI** | MIT | © Sebastián Ramírez. Web framework. |
+| **Edge TTS** | MIT | © rany2. Microsoft Edge neural voices wrapper. |
+
+### Gemma Model Notice
+
+If using Google Gemma models (e.g., `google/gemma-3-1b-it`), you must comply with the [Gemma Terms of Use](https://ai.google.dev/gemma/terms). Commercial use is permitted under 1 million monthly active users.
+
+### Full License Texts
+
+See the [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) file for complete license texts.
+
+## 📄 License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** - see the [LICENSE](LICENSE) file for details.

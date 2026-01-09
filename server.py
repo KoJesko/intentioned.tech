@@ -141,6 +141,27 @@ from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.pipelines import pipeline
 
+# --- Load environment variables from .env file ---
+def load_dotenv():
+    """Load environment variables from .env file if it exists."""
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        print("📂 Loading environment from .env file...")
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove surrounding quotes if present
+                    if (value.startswith('"') and value.endswith('"')) or \
+                       (value.startswith("'") and value.endswith("'")):
+                        value = value[1:-1]
+                    os.environ.setdefault(key, value)
+
+load_dotenv()
+
 # Initialize the App
 app = FastAPI()
 

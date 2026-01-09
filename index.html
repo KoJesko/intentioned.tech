@@ -1631,6 +1631,83 @@
         </div>
     </div>
 
+    <!-- Credits Modal -->
+    <div id="creditsModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+            <button class="modal-close" onclick="hideCreditsModal()">&times;</button>
+            <h2 style="margin-bottom: 20px; color: var(--accent);">📜 Credits & Third-Party Licenses</h2>
+            
+            <p style="margin-bottom: 20px; color: var(--text-secondary);">
+                Intentioned uses the following open-source components. We are grateful to the developers and organizations who made this possible.
+            </p>
+            
+            <div style="background: var(--card-bg); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <h3 style="color: var(--text-primary); margin-bottom: 12px;">🤖 AI Models</h3>
+                <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>Google Gemma</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">Gemma Terms of Use</td>
+                        <td style="padding: 8px 0;"><a href="https://ai.google.dev/gemma/terms" target="_blank" style="color: var(--accent);">License</a></td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>Qwen 2.5</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">Apache 2.0</td>
+                        <td style="padding: 8px 0;"><a href="https://github.com/QwenLM/Qwen2.5" target="_blank" style="color: var(--accent);">GitHub</a></td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>NVIDIA Parakeet</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">CC-BY-4.0</td>
+                        <td style="padding: 8px 0;"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" target="_blank" style="color: var(--accent);">HuggingFace</a></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0;"><strong>Kokoro TTS</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">Apache 2.0</td>
+                        <td style="padding: 8px 0;"><a href="https://huggingface.co/hexgrad/Kokoro-82M" target="_blank" style="color: var(--accent);">HuggingFace</a></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="background: var(--card-bg); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <h3 style="color: var(--text-primary); margin-bottom: 12px;">🛠️ Libraries & Frameworks</h3>
+                <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>FastAPI</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">MIT License</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>face-api.js</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">MIT License (vladmandic)</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>Vosk</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">Apache 2.0</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 8px 0;"><strong>Edge TTS</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">MIT License</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0;"><strong>PyTorch / Transformers</strong></td>
+                        <td style="padding: 8px 0; color: var(--text-secondary);">BSD-3 / Apache 2.0</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid var(--accent); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <h3 style="color: var(--accent); margin-bottom: 8px;">⚠️ Gemma Model Notice</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                    If using Google Gemma models, you must comply with the 
+                    <a href="https://ai.google.dev/gemma/terms" target="_blank" style="color: var(--accent);">Gemma Terms of Use</a>. 
+                    Commercial use is permitted for applications with under 1 million monthly active users.
+                </p>
+            </div>
+            
+            <p style="text-align: center; color: var(--text-muted); font-size: 12px;">
+                Full license texts available in <a href="https://github.com/KoJesko/intentioned.tech/blob/master/THIRD_PARTY_LICENSES" target="_blank" style="color: var(--accent);">THIRD_PARTY_LICENSES</a>
+            </p>
+        </div>
+    </div>
+
     <!-- License Footer -->
     <footer style="
         position: fixed;
@@ -1651,6 +1728,8 @@
             <a href="/terms_of_use.html" style="color: var(--accent); text-decoration: none; margin: 0 8px;">Terms of Use</a>
             <span>•</span>
             <a href="/code_of_conduct.html" style="color: var(--accent); text-decoration: none; margin: 0 8px;">Code of Conduct</a>
+            <span>•</span>
+            <a href="#" onclick="showCreditsModal(); return false;" style="color: var(--accent); text-decoration: none; margin: 0 8px;">Credits & Licenses</a>
         </div>
         <div>
             <span>Licensed under </span>
@@ -1728,6 +1807,20 @@
                 this.set('intentioned_temperature', settings.llm_temperature);
             }
         };
+
+        // --- Credits Modal ---
+        function showCreditsModal() {
+            document.getElementById('creditsModal').style.display = 'flex';
+        }
+        
+        function hideCreditsModal() {
+            document.getElementById('creditsModal').style.display = 'none';
+        }
+        
+        // Close modal on outside click
+        document.getElementById('creditsModal')?.addEventListener('click', function(e) {
+            if (e.target === this) hideCreditsModal();
+        });
 
         // --- Settings Management ---
         function toggleCollapsible(header) {
