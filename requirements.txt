@@ -1,7 +1,6 @@
 # Intentioned - Python 3.12 Requirements
 # Last updated: January 2026
 # Note: Python 3.12 required for Kokoro TTS and NeMo/Parakeet STT
-
 # Core Framework
 fastapi>=0.115.0
 uvicorn>=0.32.0
@@ -73,4 +72,4 @@ rich>=13.9.0
 # Windows-specific
 pywin32>=306; sys_platform == 'win32'
 comtypes>=1.4.0; sys_platform == 'win32'
-bitsandbytes>=0.49.1';
+bitsandbytes>=0.49.1;
