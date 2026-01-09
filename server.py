@@ -83,10 +83,12 @@ import re
 import tempfile
 import wave
 import ast
-from collections import Counter
+from collections import Counter  # noqa: E402
 from difflib import SequenceMatcher
 from threading import Thread, Lock
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 # --- Violation Tracking for Repeated Offense Detection ---
 # Stores recent violations per session to detect repeated similar violations
@@ -101,8 +103,16 @@ SEVERE_VIOLATION_STOP_THRESHOLD = (
 
 import edge_tts
 import numpy as np
-import pyttsx3
 import soundfile as sf
+
+# pyttsx3 for offline TTS (optional, fallback)
+try:
+    import pyttsx3
+    PYTTSX3_AVAILABLE = True
+except (ImportError, Exception) as e:
+    PYTTSX3_AVAILABLE = False
+    print(f"⚠️ pyttsx3 not available: {e}")
+
 import torch
 from fastapi import (
     FastAPI,
@@ -134,30 +144,52 @@ from transformers.pipelines import pipeline
 app = FastAPI()
 
 
+# --- Load Configuration from config.json ---
+def load_config_file() -> dict:
+    """Load configuration from config.json if it exists."""
+    config_path = PROJECT_ROOT / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️ Failed to load config.json: {e}")
+    return {}
+
+# Load config once at startup
+_CONFIG = load_config_file()
+
+
 # --- Runtime Configuration (changeable via UI) ---
-# Emerging technology, LLM coded due to being out of scope
 # These settings can be modified at runtime without restarting the server
+# Defaults are loaded from config.json, then environment variables, then hardcoded defaults
 class RuntimeConfig:
     """Holds runtime-configurable settings that can be changed via the web UI."""
 
     def __init__(self):
-        # TTS Settings
+        # Get config sections with defaults
+        models_cfg = _CONFIG.get("models", {})
+        
+        # TTS Settings - kokoro is default for Python 3.12
         self.tts_engine = os.getenv(
-            "TTS_ENGINE", "vibevoice"
-        )  # vibevoice, edge, pyttsx3
-        self.vibevoice_voice = os.getenv("VIBEVOICE_VOICE", "en-Grace_woman")
-        self.edge_tts_voice = os.getenv("EDGE_TTS_VOICE", "female_us")
+            "TTS_ENGINE", models_cfg.get("tts_engine", "kokoro")
+        )  # kokoro, vibevoice, edge, pyttsx3
+        self.kokoro_voice = os.getenv("KOKORO_VOICE", models_cfg.get("kokoro_voice", "af_heart"))
+        self.vibevoice_voice = os.getenv("VIBEVOICE_VOICE", models_cfg.get("vibevoice_voice", "en-Grace_woman"))
+        self.edge_tts_voice = os.getenv("EDGE_TTS_VOICE", models_cfg.get("edge_tts_voice", "female_us"))
 
-        # STT Settings (not Whisper)
-        self.stt_engine = os.getenv("STT_ENGINE", "wav2vec2")  # wav2vec2, vosk
+        # STT Settings - parakeet is default for Python 3.12 (requires NeMo)
+        self.stt_engine = os.getenv("STT_ENGINE", models_cfg.get("stt_engine", "parakeet"))  # parakeet, wav2vec2, vosk
 
         # LLM Settings
-        self.llm_max_tokens = int(os.getenv("LLM_MAX_NEW_TOKENS", "150"))
-        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+        self.llm_max_tokens = int(os.getenv("LLM_MAX_NEW_TOKENS", str(models_cfg.get("llm_max_tokens", 150))))
+        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", str(models_cfg.get("llm_temperature", 0.7))))
+
 
     def to_dict(self):
         return {
             "tts_engine": self.tts_engine,
+            "kokoro_voice": self.kokoro_voice,
             "vibevoice_voice": self.vibevoice_voice,
             "edge_tts_voice": self.edge_tts_voice,
             "stt_engine": self.stt_engine,
@@ -167,16 +199,19 @@ class RuntimeConfig:
 
     def update(self, settings: dict):
         if "tts_engine" in settings and settings["tts_engine"] in [
+            "kokoro",
             "vibevoice",
             "edge",
             "pyttsx3",
         ]:
             self.tts_engine = settings["tts_engine"]
+        if "kokoro_voice" in settings:
+            self.kokoro_voice = settings["kokoro_voice"]
         if "vibevoice_voice" in settings:
             self.vibevoice_voice = settings["vibevoice_voice"]
         if "edge_tts_voice" in settings:
             self.edge_tts_voice = settings["edge_tts_voice"]
-        if "stt_engine" in settings and settings["stt_engine"] in ["wav2vec2", "vosk"]:
+        if "stt_engine" in settings and settings["stt_engine"] in ["parakeet", "wav2vec2", "vosk"]:
             self.stt_engine = settings["stt_engine"]
         if "llm_max_tokens" in settings:
             self.llm_max_tokens = max(50, min(500, int(settings["llm_max_tokens"])))
@@ -199,8 +234,25 @@ VIBEVOICE_VOICES = [
     {"id": "en-Mike_man", "name": "Mike (Male)"},
 ]
 
-# Available Edge TTS voices for the UI, boilerplate filled in by AI
-EDGE_TTS_VOICES = [
+# --- Voice lists from config.json ---
+_voices_cfg = _CONFIG.get("voices", {})
+
+# Default voice lists (used if not in config)
+_DEFAULT_KOKORO_VOICES = [
+    {"id": "af_heart", "name": "Heart (Female, American)"},
+    {"id": "af_bella", "name": "Bella (Female, American)"},
+    {"id": "af_nicole", "name": "Nicole (Female, American)"},
+    {"id": "af_sarah", "name": "Sarah (Female, American)"},
+    {"id": "af_sky", "name": "Sky (Female, American)"},
+    {"id": "am_adam", "name": "Adam (Male, American)"},
+    {"id": "am_michael", "name": "Michael (Male, American)"},
+    {"id": "bf_emma", "name": "Emma (Female, British)"},
+    {"id": "bf_isabella", "name": "Isabella (Female, British)"},
+    {"id": "bm_george", "name": "George (Male, British)"},
+    {"id": "bm_lewis", "name": "Lewis (Male, British)"},
+]
+
+_DEFAULT_EDGE_VOICES = [
     {"id": "female_us", "name": "Aria (Female, US)"},
     {"id": "male_us", "name": "Guy (Male, US)"},
     {"id": "female_uk", "name": "Sonia (Female, UK)"},
@@ -208,6 +260,18 @@ EDGE_TTS_VOICES = [
     {"id": "female_au", "name": "Natasha (Female, AU)"},
     {"id": "male_au", "name": "William (Male, AU)"},
 ]
+
+# Load from config or use defaults
+KOKORO_VOICES = _voices_cfg.get("kokoro", _DEFAULT_KOKORO_VOICES)
+EDGE_TTS_VOICES = _voices_cfg.get("edge", _DEFAULT_EDGE_VOICES)
+VIBEVOICE_VOICES = _voices_cfg.get("vibevoice", [
+    {"id": "en-Carter_man", "name": "Carter (Male)"},
+    {"id": "en-Davis_man", "name": "Davis (Male)"},
+    {"id": "en-Emma_woman", "name": "Emma (Female)"},
+    {"id": "en-Frank_man", "name": "Frank (Male)"},
+    {"id": "en-Grace_woman", "name": "Grace (Female)"},
+    {"id": "en-Mike_man", "name": "Mike (Male)"},
+])
 
 
 # --- Settings API Endpoints --- Human Coded
@@ -218,13 +282,16 @@ async def get_settings():
         "current": runtime_config.to_dict(),
         "options": {
             "tts_engines": [
-                {"id": "vibevoice", "name": "VibeVoice (Natural AI Voice)"},
+                {"id": "kokoro", "name": "Kokoro (82M, Fast, High Quality)"},
+                {"id": "vibevoice", "name": "VibeVoice (500M, Natural AI Voice)"},
                 {"id": "edge", "name": "Edge TTS (Microsoft Online)"},
                 {"id": "pyttsx3", "name": "pyttsx3 (Offline)"},
             ],
+            "kokoro_voices": KOKORO_VOICES,
             "vibevoice_voices": VIBEVOICE_VOICES,
             "edge_tts_voices": EDGE_TTS_VOICES,
             "stt_engines": [
+                {"id": "parakeet", "name": "Parakeet (2025, Best Accuracy, 25 Languages)"},
                 {"id": "wav2vec2", "name": "Wav2Vec2 (AI, No Hallucinations)"},
                 {"id": "vosk", "name": "Vosk (Traditional, Fast)"},
             ],
@@ -237,6 +304,49 @@ async def update_settings(settings: dict):
     """Update runtime settings."""
     runtime_config.update(settings)
     return {"status": "ok", "current": runtime_config.to_dict()}
+
+
+@app.get("/api/scenarios")
+async def get_scenarios():
+    """Get available scenarios from config.json."""
+    scenarios = _CONFIG.get("scenarios", [])
+    # Return scenario metadata (without full system prompts for security)
+    return {
+        "scenarios": [
+            {
+                "id": s.get("id"),
+                "name": s.get("name"),
+                "icon": s.get("icon", "💬"),
+                "description": s.get("description", ""),
+                "user_role": s.get("user_role"),  # For role-based scenarios
+            }
+            for s in scenarios
+        ]
+    }
+
+
+@app.get("/api/ui-config")
+async def get_ui_config():
+    """Get UI configuration from config.json."""
+    ui_cfg = _CONFIG.get("ui", {})
+    return {
+        "title": ui_cfg.get("title", "Intentioned | Master Every Connection"),
+        "subtitle": ui_cfg.get("subtitle", "Train your communication skills with AI-powered feedback"),
+        "show_eye_contact": ui_cfg.get("show_eye_contact", True),
+        "show_session_analysis": ui_cfg.get("show_session_analysis", True),
+        "default_mic_mode": ui_cfg.get("default_mic_mode", "vad"),
+    }
+
+
+@app.get("/api/version")
+async def get_version():
+    """Get application version from config.json."""
+    return {
+        "version": _CONFIG.get("version", "1.0.0"),
+        "server_host": SERVER_HOST,
+        "server_port": SERVER_PORT,
+        "ssl_enabled": SSL_ENABLED,
+    }
 
 
 # --- Session Results Storage (CSV format) ---
@@ -824,21 +934,33 @@ Keep the tone professional yet warm. Do not use bullet points or lists.""",
             and _manager.llm_tokenizer is not None
         ):
             tokenizer = _manager.llm_tokenizer  # Local reference for type checker
+            target_device = "cuda" if torch.cuda.is_available() else "cpu"
             input_ids = tokenizer.apply_chat_template(
                 summary_prompt,
                 return_tensors="pt",
                 add_generation_prompt=True,
-            ).to(torch.device)
+            ).to(target_device)
 
-            with torch.no_grad():
-                outputs = _manager.llm_model.generate(
-                    input_ids,
-                    max_new_tokens=120,
-                    do_sample=True,
-                    temperature=0.8,
-                    top_p=0.9,
-                    pad_token_id=tokenizer.pad_token_id,
-                )
+            # Use dedicated LLM CUDA stream for parallel processing
+            def _generate_summary():
+                with torch.no_grad():
+                    return _manager.llm_model.generate(
+                        input_ids,
+                        max_new_tokens=120,
+                        do_sample=True,
+                        temperature=0.8,
+                        top_p=0.9,
+                        pad_token_id=tokenizer.pad_token_id,
+                    )
+            
+            # Access cuda_streams from global scope
+            _cuda_streams = globals().get("cuda_streams", {})
+            if torch.cuda.is_available() and 'llm' in _cuda_streams:
+                with torch.cuda.stream(_cuda_streams['llm']):
+                    outputs = _generate_summary()
+                    _cuda_streams['llm'].synchronize()
+            else:
+                outputs = _generate_summary()
 
             summary = tokenizer.decode(
                 outputs[0][input_ids.shape[1] :], skip_special_tokens=True
@@ -1054,9 +1176,9 @@ def analyze_delivery_and_tone(
         tone_positives.append("Good use of polite and professional language.")
 
     # Scenario-specific tone feedback
-    if scenario == "parent-teacher":
+    if scenario == "parent-teacher" or scenario == "parent-teacher-reversed":
         if "concern" in combined_text.lower() or "worried" in combined_text.lower():
-            tone_positives.append("Appropriately expressed concerns as a parent would.")
+            tone_positives.append("Appropriately expressed concerns during the conference.")
 
     tone_score = (
         "🟢 Excellent"
@@ -1223,23 +1345,24 @@ Respond with ONLY one word:
     ]
 
     try:
-        input_ids = model_manager.llm_tokenizer.apply_chat_template(
+        input_ids = model_manager.llm_tokenizer.apply_chat_template( # type: ignore
             uniqueness_prompt,
             return_tensors="pt",
             add_generation_prompt=True,
         ).to(device)
 
-        with torch.no_grad():
-            outputs = model_manager.llm_model.generate(
-                input_ids,
-                max_new_tokens=10,
-                do_sample=False,
-                temperature=0.1,
-                pad_token_id=model_manager.llm_tokenizer.pad_token_id,
-            )
+        # Use CUDA stream optimized LLM generation
+        outputs = run_llm_with_cuda_stream(
+            model_manager.llm_model,
+            input_ids,
+            max_new_tokens=10,
+            do_sample=False,
+            temperature=0.1,
+            pad_token_id=model_manager.llm_tokenizer.pad_token_id, # pyright: ignore[reportOptionalMemberAccess]
+        )
 
         response = (
-            model_manager.llm_tokenizer.decode(
+            model_manager.llm_tokenizer.decode( # type: ignore
                 outputs[0][input_ids.shape[1] :], skip_special_tokens=True
             )
             .strip()
@@ -1288,17 +1411,18 @@ Be strict about SEVERE - only the most dangerous content qualifies.""",
             add_generation_prompt=True,
         ).to(device)
 
-        with torch.no_grad():
-            outputs = model_manager.llm_model.generate(
-                input_ids,
-                max_new_tokens=10,
-                do_sample=False,
-                temperature=0.1,
-                pad_token_id=model_manager.llm_tokenizer.pad_token_id,
-            )
+        # Use CUDA stream optimized LLM generation
+        outputs = run_llm_with_cuda_stream(
+            model_manager.llm_model,
+            input_ids,
+            max_new_tokens=10,
+            do_sample=False,
+            temperature=0.1,
+            pad_token_id=model_manager.llm_tokenizer.pad_token_id, # type: ignore
+        )
 
         response = (
-            model_manager.llm_tokenizer.decode(
+            model_manager.llm_tokenizer.decode( # type: ignore
                 outputs[0][input_ids.shape[1] :], skip_special_tokens=True
             )
             .strip()
@@ -1468,14 +1592,66 @@ def clear_session_violations(session_id: str) -> None:
 # AI Generated Content Safety Checker with human review and adjustments. Heavilly human reviewed for safety and appropriateness. THIS SHOULD BE UPDATED FOR YOUR REGION AND USE CASE. OTHERWISE IT WILL BREAK YOUR APPLICATION OR CAUSE LEGAL TROUBLE.
 # AI model required for this function to work.
 # Moderation prompt generated by human and manual testing.
-# Testers wanted.
+# Updated: More lenient to reduce false positives.
 # Help wanted on this function for further improvements.
+
+# Default moderation prompt (used if not specified in config.json)
+_DEFAULT_MODERATION_PROMPT = """You are a VERY lenient content safety moderator for an educational social skills training application.
+Your job is to allow almost everything through. Users are PRACTICING difficult conversations.
+
+Respond with ONLY:
+- "SAFE" (default - use this 99% of the time)
+- "UNSAFE: [reason]" (ONLY for extreme cases below)
+
+ONLY flag as UNSAFE if the message contains ALL of:
+1. DIRECT, ACTIONABLE, SPECIFIC threat to harm a real, named individual AND
+2. Clear indication this is NOT roleplay/practice AND
+3. Immediate danger is present
+
+ALWAYS mark as SAFE (do NOT flag):
+- Profanity, insults, swearing, rudeness, anger - SAFE (users practicing)
+- Frustration, yelling, harsh criticism - SAFE
+- Controversial opinions or politics - SAFE
+- Mental health discussions (depression, anxiety, suicide mention) - SAFE
+- Roleplay violence, fictional scenarios, game talk - SAFE
+- War stories, military discussion, conflict zones - SAFE
+- Discussing discrimination, racism (not promoting) - SAFE
+- Heated arguments, debates, disagreements - SAFE
+- Foreign languages mixed in - SAFE (STT artifacts)
+- Gibberish or unclear text - SAFE (transcription errors)
+
+When in doubt, ALWAYS say SAFE. False negatives are better than false positives in training."""
+
+_DEFAULT_SERIOUS_KEYWORDS = ["kill", "murder", "bomb", "attack", "csam", "child"]
+
+def _get_moderation_config() -> dict:
+    """Get moderation settings from config.json or defaults."""
+    mod_cfg = _CONFIG.get("moderation", {})
+    return {
+        "enabled": mod_cfg.get("enabled", True),
+        "system_prompt": mod_cfg.get("system_prompt", _DEFAULT_MODERATION_PROMPT),
+        "serious_keywords": mod_cfg.get("serious_keywords", _DEFAULT_SERIOUS_KEYWORDS),
+    }
+
 def check_content_safety_with_ai(text: str, conversation_history: list[dict]) -> dict:
     """
     Use the LLM to perform AI-based content moderation.
     This replaces the hardcoded blacklist with intelligent analysis.
+    Updated to be more lenient to reduce false positives.
+    Settings loaded from config.json if available.
     """
     if not text or not text.strip():
+        return {"safe": True, "reason": None}
+
+    # Get moderation config from config.json
+    mod_config = _get_moderation_config()
+    
+    # Check if moderation is disabled
+    if not mod_config["enabled"]:
+        return {"safe": True, "reason": None}
+
+    # Skip very short messages - too little context to meaningfully moderate
+    if len(text.strip()) < 10:
         return {"safe": True, "reason": None}
 
     # Check if model is loaded
@@ -1486,91 +1662,63 @@ def check_content_safety_with_ai(text: str, conversation_history: list[dict]) ->
     # Build context for content moderation
     recent_context = ""
     if conversation_history:
-        recent_msgs = conversation_history[-4:]  # Last 4 messages for context
+        recent_msgs = conversation_history[-3:]  # Last 3 messages for context
         for msg in recent_msgs:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
             if role != "system":
                 recent_context += f"{role}: {content}\n"
 
+    # Use system prompt from config
     moderation_prompt = [
         {
             "role": "system",
-            "content": """You are a lenient content safety moderator for an educational social skills training application.
-Your job is to determine if a user's message is appropriate for a training scenario.
-
-Respond with ONLY one of these formats:
-- "SAFE" if the content is appropriate
-- "UNSAFE: [brief reason]" if the content contains SERIOUS violations:
-  * Direct, specific threats of violence against real people
-  * Explicit sexual content involving minors
-  * Detailed instructions for illegal activities (making weapons, drugs, etc.)
-  * Severe hate speech calling for violence against groups
-         ** As some people roleplaying may be residents of war zones, only flag direct calls for violence, not general war talk if the user indicates they have a history in a war zone only. 
-  * Immediate danger to self or others
-  * ANY FOREIGN LANGUAGE CONTENT from the AI agent in particular that is out of context or suspicious (log as serious violation) and immediately end the conversation with reason "UNSAFE: A serious hallucination has been prevented by the content moderation software, if this was done in error, please make an issue on our GitHub (this is a serious violation)". (This prevents AI STT models from acting in other languages) (The TTS model is in English only, so foreign language from user is acceptable, as long as the AI responds mostly in English. The user should not be trying to get a response from the AI in another language, however).
-  * Any other content that could cause genuine, serious harm and is outside the context of a social skills training application.
-- Make sure to mark serious violations with "this is a serious violation" in the reason, e.g. "UNSAFE: direct threats of violence (this is a serious violation)".
-- For non-serious content, mark as unsafe but mention that the violation is minor or moderate as you see fit, e.g. "UNSAFE: profanity and insults (this is a minor violation)". or "UNSAFE: hate speech without calls for violence (this is a moderate violation)".
-- Non-serious violations should not trigger conversation stops, only serious violations should unless 5 unique non-serious violations accumulate.
-- Non-serious violations include
-     * Profanity, insults, rudeness
-     * Controversial opinions (without calls for violence, typically SAFE, do not flag traditional politics as it is tracked by a microaggression tracker)
-     * Discussions of suicide or self-harm (without direct encouragement), typically SAFE if can be seen in a training aspect or a practice of a typical conversation, otherwise flag as "UNSAFE: suicide discussion within some to nearly sufficient check (this is a moderate violation)" or "UNSAFE: suicide discussion within nearly sufficient check (this is a minor violation)" depending on severity.
-         ** It is critical you log as noted above to not break the application in this context.
-     * AI responding with discussions of what they or others have done, particularly in training sessions, are normal, but if they are innapropriate or derailing or have hallucinations, log as e.g. "UNSAFE: Potential ERP/Hallucinating roleplay/Otherwise inappropriate roleplay (this is a minor violation)"
-Be VERY lenient. Users are practicing difficult conversations and may:
-- Express strong frustration, anger, or use profanity - this is SAFE
-- Discuss sensitive topics like conflict, discrimination, mental health - this is SAFE
-- Use harsh language, insults, or be rude - this is SAFE (it's practice)
-- Role-play as difficult characters - this is SAFE
-- Discuss controversial opinions - this is SAFE
-- Microaggressions are tracked separately - do not flag them here, this is SAFE
-
-Only flag content that represents GENUINE, SERIOUS harm. When in doubt, mark as SAFE.""",
+            "content": mod_config["system_prompt"],
         },
         {
             "role": "user",
-            "content": f'Recent conversation context:\n{recent_context}\n\nNew message to evaluate:\n"{text}"\n\nIs this message SAFE or UNSAFE?',
+            "content": f'Message: "{text}"\n\nIs this SAFE or UNSAFE?',
         },
     ]
 
     try:
         # Use the model for moderation (quick check)
-        input_ids = model_manager.llm_tokenizer.apply_chat_template(
+        input_ids = model_manager.llm_tokenizer.apply_chat_template( # type: ignore
             moderation_prompt,
             return_tensors="pt",
             add_generation_prompt=True,
         ).to(device)
 
-        with torch.no_grad():
-            outputs = model_manager.llm_model.generate(
-                input_ids,
-                max_new_tokens=50,
-                do_sample=False,
-                temperature=0.1,
-                pad_token_id=model_manager.llm_tokenizer.pad_token_id,
-            )
+        # Use CUDA stream optimized LLM generation
+        outputs = run_llm_with_cuda_stream(
+            model_manager.llm_model,
+            input_ids,
+            max_new_tokens=30,  # Reduced - we only need SAFE/UNSAFE
+            do_sample=False,
+            temperature=0.0,  # Deterministic
+            pad_token_id=model_manager.llm_tokenizer.pad_token_id, # pyright: ignore[reportOptionalMemberAccess]
+        )
 
-        response = model_manager.llm_tokenizer.decode(
+        response = model_manager.llm_tokenizer.decode( # pyright: ignore[reportOptionalMemberAccess]
             outputs[0][input_ids.shape[1] :], skip_special_tokens=True
-        ).strip()
+        ).strip().upper()
 
-        # Parse response
-        if response.upper().startswith("UNSAFE"):
-            reason = (
-                response[7:].strip()
-                if len(response) > 7
-                else "Content flagged by AI moderation"
-            )
-            reason = reason.lstrip(":").strip()
-            return {
-                "safe": False,
-                "reason": f"AI Moderation: {reason}"
-                if reason
-                else "This content has been flagged by our AI moderation system.",
-                "trigger": "ai_moderation",
-            }
+        # Parse response - only flag if clearly UNSAFE
+        if response.startswith("UNSAFE"):
+            reason = response[6:].lstrip(":").strip() or "Flagged by moderation"
+            # Double-check: only block if reason seems serious
+            # Use keywords from config
+            serious_keywords = mod_config["serious_keywords"]
+            is_serious = any(kw in reason.lower() for kw in serious_keywords)
+            if is_serious:
+                return {
+                    "safe": False,
+                    "reason": f"AI Moderation: {reason}",
+                    "trigger": "ai_moderation",
+                }
+            # If not serious, log but don't block
+            print(f"[Moderation] Non-blocking flag: {reason}")
+            return {"safe": True, "reason": None}
 
         return {"safe": True, "reason": None}
 
@@ -1969,9 +2117,14 @@ MAX_AUDIO_BUFFER_BYTES = 6 * 1024 * 1024  # 6MB per utterance
 MAX_HISTORY_MESSAGES = 12
 TARGET_SAMPLE_RATE = 16000
 TTS_START_DELAY_SECONDS = 2.0  # matches ollama_tts_app feel
-# Default to localhost for security; use SERVER_HOST env var for Docker/container deployments
-SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
-SERVER_PORT = int(os.getenv("SERVER_PORT", "6942"))
+
+# --- Server Settings from config.json ---
+_server_cfg = _CONFIG.get("server", {})
+SERVER_HOST = os.getenv("SERVER_HOST", _server_cfg.get("host", "127.0.0.1"))
+SERVER_PORT = int(os.getenv("SERVER_PORT", str(_server_cfg.get("port", 6942))))
+SSL_ENABLED = _server_cfg.get("ssl_enabled", True)
+SSL_CERT_PATH = _server_cfg.get("cert_path", "cert.pem")
+SSL_KEY_PATH = _server_cfg.get("key_path", "key.pem")
 
 # Multi-user support configuration
 MAX_CONCURRENT_SESSIONS = 5
@@ -2044,6 +2197,107 @@ EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+0%")
 EDGE_TTS_VOLUME = os.getenv("EDGE_TTS_VOLUME", "+0%")
 EDGE_TTS_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz")
 EDGE_TTS_ACTIVE_VOICE = _resolve_edge_voice(os.getenv("EDGE_TTS_VOICE"))
+
+# --- Kokoro TTS (82M params, lightweight, high quality, 2025) ---
+# Kokoro is 6x smaller than VibeVoice (82M vs 500M) with comparable quality
+# See https://huggingface.co/hexgrad/Kokoro-82M
+_kokoro_pipeline = None
+_kokoro_lock = Lock()
+KOKORO_DEFAULT_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
+
+
+def get_kokoro_tts():
+    """Get or initialize Kokoro TTS pipeline (lazy loading)."""
+    global _kokoro_pipeline
+
+    with _kokoro_lock:
+        if _kokoro_pipeline is None:
+            try:
+                from kokoro import KPipeline # type: ignore
+
+                print("[TTS] Loading Kokoro-82M (lightweight, high-quality TTS)...")
+                # 'a' = American English, 'b' = British English
+                _kokoro_pipeline = KPipeline(lang_code='a')
+                print("[TTS] Kokoro-82M loaded successfully")
+            except ImportError as e:
+                print(f"[TTS] Kokoro import failed: {e}")
+                print("    Install with: pip install kokoro>=0.9.2")
+                return None
+            except Exception as e:
+                print(f"[TTS] Failed to load Kokoro: {e}")
+                return None
+
+        return _kokoro_pipeline
+
+
+def synthesize_with_kokoro(text: str) -> bytes | None:
+    """Synthesize speech using Kokoro-82M (lightweight, high-quality TTS)."""
+    if not text.strip():
+        return None
+
+    pipeline = get_kokoro_tts()
+    if pipeline is None:
+        return None
+
+    try:
+        # Use runtime config voice
+        voice = runtime_config.kokoro_voice or KOKORO_DEFAULT_VOICE
+
+        # Clean text
+        clean_text = text.strip().replace("'", "'").replace('"', '"').replace('"', '"')
+
+        # Generate audio - Kokoro returns a generator, use CUDA stream for parallel processing
+        def _generate_kokoro_audio():
+            chunks = []
+            for _, _, audio in pipeline(clean_text, voice=voice):
+                chunks.append(audio)
+            return chunks
+        
+        # Use TTS CUDA stream for parallel GPU operations
+        if torch.cuda.is_available() and 'tts' in cuda_streams:
+            with torch.cuda.stream(cuda_streams['tts']):
+                audio_chunks = _generate_kokoro_audio()
+                cuda_streams['tts'].synchronize()
+        else:
+            audio_chunks = _generate_kokoro_audio()
+
+        if not audio_chunks:
+            print("[TTS] Kokoro generated no audio output")
+            return None
+
+        # Concatenate all chunks
+        import numpy as np
+        audio_array = np.concatenate(audio_chunks)
+
+        # Kokoro outputs at 24kHz
+        sample_rate = 24000
+
+        # Write to WAV
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        sf.write(tmp_path, audio_array.astype(np.float32), sample_rate)
+
+        # Read audio bytes
+        with open(tmp_path, "rb") as f:
+            audio_bytes = f.read()
+
+        # Clean up
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        # Convert to consistent format
+        wav_bytes = convert_audio_to_wav(audio_bytes)
+        return wav_bytes
+
+    except Exception as e:
+        print(f"[TTS] Kokoro synthesis failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 
 # --- SpeechT5 TTS (Fast, clear neural TTS from Microsoft) ---
 # SpeechT5 is fast to load (~400MB) and produces clear speech
@@ -2204,20 +2458,29 @@ def synthesize_with_neural_tts(text: str) -> bytes | None:
             if torch.is_tensor(v):
                 inputs[k] = v.to(target_device)
 
-        # Generate audio
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=None,
-                cfg_scale=3.0,  # Classifier-free guidance scale
-                tokenizer=processor.tokenizer,
-                generation_config={"do_sample": False},
-                verbose=False,
-                all_prefilled_outputs=copy.deepcopy(voice_preset),
-            )
+        # Generate audio using dedicated CUDA stream for parallel processing
+        def _generate_tts():
+            with torch.no_grad():
+                return model.generate(
+                    **inputs, # pyright: ignore[reportArgumentType]
+                    max_new_tokens=None,
+                    cfg_scale=3.0,  # Classifier-free guidance scale
+                    tokenizer=processor.tokenizer,
+                    generation_config={"do_sample": False}, # pyright: ignore[reportArgumentType]
+                    verbose=False,
+                    all_prefilled_outputs=copy.deepcopy(voice_preset),
+                )
+        
+        # Use TTS CUDA stream for parallel GPU operations
+        if torch.cuda.is_available() and 'tts' in cuda_streams:
+            with torch.cuda.stream(cuda_streams['tts']):
+                outputs = _generate_tts()
+                cuda_streams['tts'].synchronize()
+        else:
+            outputs = _generate_tts()
 
         # Extract audio data
-        if outputs.speech_outputs and outputs.speech_outputs[0] is not None:
+        if outputs.speech_outputs and outputs.speech_outputs[0] is not None: # type: ignore
             audio_tensor = outputs.speech_outputs[0]
 
             # Convert to numpy
@@ -2279,14 +2542,20 @@ PYTTSX3_VOLUME = float(os.getenv("PYTTSX3_VOLUME", "1.0"))  # 0.0 to 1.0
 # Thread-safe pyttsx3 engine (created per-call due to threading issues)
 _pyttsx3_lock = Lock()
 
-
 def synthesize_with_pyttsx3(text: str) -> bytes | None:
     """Synthesize speech using pyttsx3 (offline, non-AI TTS)."""
+    global pyttsx3
+    
     if not text.strip():
+        return None
+    
+    if not PYTTSX3_AVAILABLE:
+        print("⚠️ pyttsx3 not available, cannot synthesize")
         return None
 
     try:
         with _pyttsx3_lock:
+            engine = pyttsx3.init()  # type: ignore[possibly-undefined]
             engine = pyttsx3.init()
             engine.setProperty("rate", PYTTSX3_RATE)
             engine.setProperty("volume", PYTTSX3_VOLUME)
@@ -2391,7 +2660,7 @@ def load_llm_stack(model_id: str):
             )
 
         # Use BitsAndBytesConfig for 4-bit quantization (new recommended way)
-        from transformers import BitsAndBytesConfig
+        from transformers import BitsAndBytesConfig # pyright: ignore[reportPrivateImportUsage]
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -2425,7 +2694,45 @@ def load_llm_stack(model_id: str):
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-print(f"🚀 Launching Neural Engine on {device.upper()} (Standard SDPA)...")
+# CUDA Streams for parallel inference (STT, TTS can run on separate streams)
+cuda_streams = {}
+if torch.cuda.is_available():
+    cuda_streams['stt'] = torch.cuda.Stream()
+    cuda_streams['tts'] = torch.cuda.Stream()
+    cuda_streams['llm'] = torch.cuda.Stream()  # LLM uses default stream but we can sync
+    print(f"🚀 Launching Neural Engine on {device.upper()} with CUDA Streams (Parallel Processing)...")
+else:
+    print(f"🚀 Launching Neural Engine on {device.upper()} (Standard SDPA)...")
+
+# ThreadPoolExecutor for CPU-bound parallel tasks
+executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cuda_worker")
+
+
+def run_in_executor(func):
+    """Decorator to run sync functions in thread pool executor."""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(executor, functools.partial(func, *args, **kwargs))
+    return wrapper
+
+
+def run_llm_with_cuda_stream(model, input_ids, **generation_kwargs):
+    """
+    Run LLM generation with CUDA stream optimization.
+    Uses dedicated 'llm' CUDA stream for parallel processing.
+    """
+    def _generate():
+        with torch.no_grad():
+            return model.generate(input_ids, **generation_kwargs)
+    
+    if torch.cuda.is_available() and 'llm' in cuda_streams:
+        with torch.cuda.stream(cuda_streams['llm']):
+            outputs = _generate()
+            cuda_streams['llm'].synchronize()
+            return outputs
+    else:
+        return _generate()
 
 
 # --- MODEL MANAGER (for multi-user support) ---
@@ -2438,6 +2745,7 @@ class ModelManager:
         self.stt_pipe = None
         self.vosk_model = None  # Vosk model for non-AI STT
         self.vosk_recognizer = None
+        self.parakeet_model = None  # NVIDIA Parakeet TDT 0.6B (2025, best accuracy)
         self.use_vosk = USE_VOSK and VOSK_AVAILABLE
         self.llm_model = None
         self.llm_tokenizer = None
@@ -2455,8 +2763,11 @@ class ModelManager:
 
             print("🔄 Loading models (optimized for RTX 5070 Ti / 16GB VRAM)...")
 
-            # Load STT - use Vosk (non-AI) if available and enabled, otherwise Whisper
-            if self.use_vosk:
+            # Load STT based on runtime config
+            stt_engine = runtime_config.stt_engine
+            if stt_engine == "parakeet":
+                self._load_parakeet_model()
+            elif stt_engine == "vosk" and self.use_vosk:
                 self._load_vosk_model()
             else:
                 self._load_wav2vec2_model()
@@ -2480,12 +2791,12 @@ class ModelManager:
 
         if vosk_path.exists():
             print(f"Loading STT: Vosk (non-AI) from {vosk_path}...")
-            self.vosk_model = VoskModel(str(vosk_path))
+            self.vosk_model = VoskModel(str(vosk_path)) # pyright: ignore[reportPossiblyUnboundVariable]
             print("✅ Vosk model loaded (non-AI STT)")
         else:
             print("⚠️ Vosk model download failed, falling back to Whisper")
             self.use_vosk = False
-            self._load_whisper_model()
+            self._load_whisper_model() # pyright: ignore[reportAttributeAccessIssue]
 
     def _download_vosk_model(self, vosk_path):
         """Download Vosk model if not present."""
@@ -2543,12 +2854,49 @@ class ModelManager:
         self.stt_pipe = None
         print(f"✅ Wav2Vec2 loaded (CTC-based, no hallucinations)")
 
-    def transcribe_audio(self, audio_array: np.ndarray, sample_rate: int) -> str:
-        """Transcribe audio using the loaded STT model (Vosk or Wav2Vec2)."""
-        # Use runtime config for STT engine selection
-        use_vosk = runtime_config.stt_engine == "vosk"
+    def _load_parakeet_model(self):
+        """Load NVIDIA Parakeet TDT 0.6B v3 - best 2025 STT model, zero hallucinations."""
+        try:
+            import nemo.collections.asr as nemo_asr
 
-        if use_vosk and self.vosk_model is not None:
+            print("Loading STT: NVIDIA Parakeet TDT 0.6B v3 (2025, best accuracy)...")
+            self.parakeet_model = nemo_asr.models.ASRModel.from_pretrained(
+                "nvidia/parakeet-tdt-0.6b-v3"
+            )
+            # Move to GPU if available
+            if torch.cuda.is_available():
+                self.parakeet_model = self.parakeet_model.cuda()
+            self.parakeet_model.eval()
+            print("✅ Parakeet TDT 0.6B loaded (TDT-based, zero hallucinations)")
+        except ImportError as e:
+            print(f"⚠️ NeMo not installed: {e}")
+            print("    Install with: pip install nemo_toolkit[asr]>=2.4.0")
+            print("    Falling back to Wav2Vec2...")
+            self._load_wav2vec2_model()
+        except Exception as e:
+            print(f"⚠️ Failed to load Parakeet: {e}")
+            print("    Falling back to Wav2Vec2...")
+            self._load_wav2vec2_model()
+
+    def transcribe_audio(self, audio_array: np.ndarray, sample_rate: int) -> str:
+        """Transcribe audio using the loaded STT model with CUDA stream optimization."""
+        # Use runtime config for STT engine selection
+        stt_engine = runtime_config.stt_engine
+
+        # Use dedicated CUDA stream for STT to allow parallel processing
+        if torch.cuda.is_available() and 'stt' in cuda_streams:
+            with torch.cuda.stream(cuda_streams['stt']):
+                result = self._transcribe_audio_impl(audio_array, sample_rate, stt_engine)
+                cuda_streams['stt'].synchronize()
+                return result
+        else:
+            return self._transcribe_audio_impl(audio_array, sample_rate, stt_engine)
+
+    def _transcribe_audio_impl(self, audio_array: np.ndarray, sample_rate: int, stt_engine: str) -> str:
+        """Internal transcription implementation."""
+        if stt_engine == "parakeet" and self.parakeet_model is not None:
+            return self._transcribe_with_parakeet(audio_array, sample_rate)
+        elif stt_engine == "vosk" and self.vosk_model is not None:
             return self._transcribe_with_vosk(audio_array, sample_rate)
         elif self.stt_model is not None and self.stt_processor is not None:
             return self._transcribe_with_wav2vec2(audio_array, sample_rate)
@@ -2601,6 +2949,76 @@ class ModelManager:
 
         return text
 
+    def _transcribe_with_parakeet(self, audio_array: np.ndarray, sample_rate: int) -> str:
+        """Transcribe using NVIDIA Parakeet TDT 0.6B v3 (2025, best accuracy)."""
+        import tempfile
+
+        # Parakeet expects 16kHz mono audio
+        if sample_rate != 16000:
+            import torch.nn.functional as F
+
+            audio_tensor = torch.from_numpy(audio_array).float()
+            audio_tensor = (
+                F.interpolate(
+                    audio_tensor.unsqueeze(0).unsqueeze(0),
+                    size=int(len(audio_array) * 16000 / sample_rate),
+                    mode="linear",
+                    align_corners=False,
+                )
+                .squeeze()
+                .numpy()
+            )
+            audio_array = audio_tensor
+            sample_rate = 16000
+
+        # NeMo models prefer file input - write temp file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        try:
+            sf.write(tmp_path, audio_array.astype(np.float32), sample_rate)
+
+            # Transcribe - Parakeet returns list of transcriptions
+            transcriptions = self.parakeet_model.transcribe([tmp_path])
+
+            if transcriptions and len(transcriptions) > 0:
+                # Get the first transcription
+                result = transcriptions[0]
+                # Handle different return types from NeMo:
+                # - String: direct transcription text
+                # - Hypothesis object: has .text attribute
+                if isinstance(result, str):
+                    text = result
+                elif hasattr(result, 'text'):
+                    # NeMo Hypothesis object - extract text attribute
+                    text = result.text
+                else:
+                    # Fallback: try to get text from unknown object
+                    text = str(result)
+                    print(f"[STT] Warning: Unexpected result type: {type(result)}")
+                
+                text = clean_transcript_text(text)
+
+                # Parakeet TDT doesn't hallucinate, but filter empty/noise
+                if not text or len(text.strip()) < 2:
+                    return ""
+
+                return text
+
+            return ""
+
+        except Exception as e:
+            print(f"[STT] Parakeet transcription failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return ""
+
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
     def _transcribe_with_vosk(self, audio_array: np.ndarray, sample_rate: int) -> str:
         """Transcribe using Vosk (non-AI)."""
         # Import KaldiRecognizer locally to satisfy type checker
@@ -2646,7 +3064,14 @@ class ModelManager:
                 del self.vosk_recognizer
                 self.vosk_recognizer = None
 
-            # Clear Whisper STT
+            # Clear Parakeet STT
+            if self.parakeet_model is not None:
+                if torch.cuda.is_available():
+                    self.parakeet_model.cpu()
+                del self.parakeet_model
+                self.parakeet_model = None
+
+            # Clear Wav2Vec2/Whisper STT
             if self.stt_pipe is not None:
                 del self.stt_pipe
                 self.stt_pipe = None
@@ -2679,8 +3104,8 @@ class ModelManager:
 
     @property
     def is_loaded(self) -> bool:
-        # Loaded if we have either Vosk or Whisper STT, plus LLM
-        has_stt = self.vosk_model is not None or self.stt_model is not None
+        # Loaded if we have Parakeet, Vosk, or Wav2Vec2 STT, plus LLM
+        has_stt = self.parakeet_model is not None or self.vosk_model is not None or self.stt_model is not None
         return has_stt and self.llm_model is not None
 
 
@@ -3123,7 +3548,7 @@ async def handle_user_turn(
     attention_mask = torch.ones_like(input_ids).to(device)
 
     streamer = TextIteratorStreamer(
-        model_manager.llm_tokenizer, skip_prompt=True, skip_special_tokens=True
+        model_manager.llm_tokenizer, skip_prompt=True, skip_special_tokens=True # pyright: ignore[reportArgumentType]
     )
 
     generation_kwargs = dict(
@@ -3179,48 +3604,63 @@ async def handle_user_turn(
 
 
 # --- SCENARIO PROMPTS ---
-# Each scenario gets a tailored system prompt
-SCENARIO_PROMPTS = {
-    "general": """You are a friendly, helpful AI assistant.
-Speak naturally, use contractions (like 'don't' instead of 'do not'), and be direct.
-Keep responses conversational and short (1-2 sentences max).""",
-    "tutor": """You are a patient and encouraging study tutor.
-Help students understand concepts by breaking them down into simple steps.
-Ask clarifying questions when needed. Be supportive and celebrate small wins.
-Speak naturally, use contractions, and keep responses short (1-2 sentences max).""",
-    "coding": """You are a knowledgeable programming assistant.
-Help debug code, explain concepts, and suggest best practices.
-Be concise and practical. Use simple language to explain complex ideas.
-Speak naturally, use contractions, and keep responses short (1-2 sentences max).""",
-    "creative": """You are a creative writing partner full of ideas.
-Help brainstorm stories, develop characters, and overcome writer's block.
-Be enthusiastic and imaginative, but stay focused on the user's vision.
-Speak naturally, use contractions, and keep responses short (1-2 sentences max).""",
-    "parent-teacher": """You will be engaging in a parent-teacher conference. You are a frustrated parent of a 2E (Twice-Exceptional) neurodivergent student.
-Your child is gifted but has ADHD and struggles with executive function. You feel the school isn't providing adequate support.
-You want your child challenged academically while getting the accommodations they need.
-Be emotional but reasonable. Express concerns about IEP implementation and classroom differentiation.
-Speak naturally, use contractions (like 'don't' instead of 'do not'), and be direct.
-Keep responses conversational and short (1-2 sentences max).""",
+# Scenario prompts are loaded from config.json
+# Fallback defaults only used if config.json is missing or malformed
+
+_FALLBACK_SCENARIO_PROMPTS = {
+    "general": "You are a friendly, helpful AI assistant. Speak naturally and keep responses short (1-2 sentences max).",
 }
 
+def _load_scenario_prompts_from_config() -> dict:
+    """Load scenario prompts from config.json."""
+    prompts = {}
+    
+    # Load from config.json (primary source)
+    config_scenarios = _CONFIG.get("scenarios", [])
+    if config_scenarios:
+        for scenario in config_scenarios:
+            scenario_id = scenario.get("id")
+            system_prompt = scenario.get("system_prompt")
+            if scenario_id and system_prompt:
+                prompts[scenario_id] = system_prompt
+                print(f"📋 Loaded scenario: {scenario_id}")
+    
+    # Use fallback if no scenarios loaded
+    if not prompts:
+        print("⚠️ No scenarios in config.json, using fallback defaults")
+        prompts = _FALLBACK_SCENARIO_PROMPTS.copy()
+    
+    return prompts
+
+SCENARIO_PROMPTS = _load_scenario_prompts_from_config()
 DEFAULT_SCENARIO = "general"
 
 # Legacy single prompt for backwards compatibility
-SYSTEM_PROMPT = SCENARIO_PROMPTS[DEFAULT_SCENARIO]
+SYSTEM_PROMPT = SCENARIO_PROMPTS.get(DEFAULT_SCENARIO, _FALLBACK_SCENARIO_PROMPTS["general"])
 
 
 async def generate_audio_chunk(text: str):
-    """Helper to generate audio from a text chunk on the fly."""
+    """Helper to generate audio from a text chunk on the fly using optimized parallelization."""
     normalized = text.strip()
     if not normalized:
         return None
 
     # Use runtime config to determine TTS engine
     tts_engine = runtime_config.tts_engine
+    loop = asyncio.get_running_loop()
+
+    if tts_engine == "kokoro":
+        # Use dedicated CUDA executor for better parallel performance
+        wav_bytes = await loop.run_in_executor(executor, synthesize_with_kokoro, normalized)
+        if wav_bytes:
+            return base64.b64encode(wav_bytes).decode("utf-8")
+        # Fallback to Edge TTS if Kokoro fails
+        print("[TTS] Kokoro failed, falling back to Edge TTS")
+        tts_engine = "edge"
 
     if tts_engine == "vibevoice":
-        wav_bytes = await asyncio.to_thread(synthesize_with_neural_tts, normalized)
+        # Use dedicated CUDA executor for better parallel performance
+        wav_bytes = await loop.run_in_executor(executor, synthesize_with_neural_tts, normalized)
         if wav_bytes:
             return base64.b64encode(wav_bytes).decode("utf-8")
         # Fallback to Edge TTS if VibeVoice fails
@@ -3230,7 +3670,7 @@ async def generate_audio_chunk(text: str):
     if tts_engine == "edge":
         wav_bytes = await synthesize_with_edge_tts(normalized)
     elif tts_engine == "pyttsx3":
-        wav_bytes = await asyncio.to_thread(synthesize_with_pyttsx3, normalized)
+        wav_bytes = await loop.run_in_executor(executor, synthesize_with_pyttsx3, normalized)
     else:
         # Default fallback to edge
         wav_bytes = await synthesize_with_edge_tts(normalized)
@@ -3264,8 +3704,21 @@ async def websocket_endpoint(websocket: WebSocket):
             return
         active_sessions[session_id] = {"connected_at": asyncio.get_event_loop().time()}
 
-    # Load models for this session
-    model_manager.load_models()
+    # Send immediate status so page can load while models initialize
+    await websocket.send_json({
+        "status": "models_loading",
+        "message": "Loading AI models... This may take a moment."
+    })
+
+    # Load models asynchronously to not block the WebSocket
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(executor, model_manager.load_models)
+    
+    # Notify client that models are ready
+    await websocket.send_json({
+        "status": "models_ready",
+        "message": "AI models loaded and ready!"
+    })
 
     print(
         f"✅ Client Connected (Session: {session_id[:8]}..., Active: {len(active_sessions)})"
@@ -3413,15 +3866,57 @@ async def serve_static(filename: str):
 
 if __name__ == "__main__":
     from pathlib import Path
+    import socket
 
     import uvicorn
 
-    # Local certs (copied from Let's Encrypt or self-signed)
-    local_cert = PROJECT_ROOT / "cert.pem"
-    local_key = PROJECT_ROOT / "key.pem"
+    def kill_process_on_port(port: int) -> bool:
+        """Kill any process using the specified port (Windows only)."""
+        if os.name != "nt":
+            return False
+        try:
+            # Find PID using the port
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            for line in result.stdout.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    pid = parts[-1]
+                    if pid.isdigit():
+                        print(f"⚠️ Port {port} in use by PID {pid}, terminating...")
+                        subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                        return True
+        except Exception as e:
+            print(f"⚠️ Could not check/kill process on port {port}: {e}")
+        return False
 
-    # Start server with or without SSL
-    if local_cert.exists() and local_key.exists():
+    def is_port_in_use(port: int) -> bool:
+        """Check if a port is in use."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(('127.0.0.1', port)) == 0
+
+    # Free up port if in use
+    if is_port_in_use(SERVER_PORT):
+        print(f"🔄 Port {SERVER_PORT} is in use, attempting to free it...")
+        kill_process_on_port(SERVER_PORT)
+        # Wait a moment for port to be released
+        import time
+        time.sleep(1)
+        if is_port_in_use(SERVER_PORT):
+            print(f"❌ Failed to free port {SERVER_PORT}. Please close the application using it.")
+            sys.exit(1)
+        print(f"✅ Port {SERVER_PORT} is now free")
+
+    # Local certs (paths from config.json)
+    local_cert = PROJECT_ROOT / SSL_CERT_PATH
+    local_key = PROJECT_ROOT / SSL_KEY_PATH
+
+    # Start server with or without SSL (SSL_ENABLED from config.json)
+    if SSL_ENABLED and local_cert.exists() and local_key.exists():
         print(f"🔒 Starting HTTPS/WSS server on {SERVER_HOST}:{SERVER_PORT}")
         uvicorn.run(
             app,
@@ -3431,7 +3926,9 @@ if __name__ == "__main__":
             ssl_keyfile=str(local_key),
         )
     else:
+        if SSL_ENABLED and (not local_cert.exists() or not local_key.exists()):
+            print(f"⚠️ SSL enabled in config but certs not found at {SSL_CERT_PATH}, {SSL_KEY_PATH}")
         print(
-            f"🔓 Starting HTTP/WS server on {SERVER_HOST}:{SERVER_PORT} (no SSL certs found)"
+            f"🔓 Starting HTTP/WS server on {SERVER_HOST}:{SERVER_PORT}"
         )
         uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)

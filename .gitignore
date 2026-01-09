@@ -30,12 +30,19 @@ env/
 
 # Model cache (large files)
 model_cache/
+vosk-model-*/
+*.pt
+*.bin
+*.safetensors
+*.onnx
+!vibevoice_repo/demo/voices/*.pt
 
-# SSL Certificates (SECRETS - DO NOT COMMIT)
-*.pem
-*.key
-cert.pemes)
-model_cache/
+# Kokoro TTS cache
+kokoro_cache/
+
+# NeMo/Parakeet models
+nemo_models/
+*.nemo
 
 # SSL Certificates (SECRETS - DO NOT COMMIT)
 *.pem

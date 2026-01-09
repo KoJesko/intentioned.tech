@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intentioned - Social Training Platform</title>
+    <title>Intentioned | Master Every Connection</title>
     
     <!-- Face-API.js for eye contact detection (vladmandic fork with better model support) -->
     <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.min.js"></script>
@@ -117,6 +117,13 @@
             flex-direction: column;
             gap: 8px;
         }
+        
+        .loading-scenarios {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
 
         .scenario-btn {
             background: var(--card-secondary);
@@ -150,6 +157,45 @@
             font-size: 0.75rem;
             color: var(--text-muted);
             margin-top: 4px;
+        }
+        
+        /* Role Selector within Scenario */
+        .role-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .role-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        
+        .role-btn {
+            flex: 1;
+            padding: 6px 10px;
+            font-size: 0.7rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--card-secondary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .role-btn:hover {
+            background: var(--card-hover);
+            color: var(--text-primary);
+        }
+        
+        .role-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
         }
 
         /* Controls Card */
@@ -326,33 +372,137 @@
         .status-badge {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
+            gap: 8px;
+            padding: 6px 14px;
             background: var(--card-secondary);
             border-radius: 20px;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
+            font-weight: 500;
+            transition: all 0.3s ease;
         }
 
         .status-dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: var(--text-muted);
+            transition: all 0.3s ease;
         }
 
+        /* Connecting state - pulsing yellow */
+        .status-badge.connecting {
+            background: rgba(234, 179, 8, 0.15);
+            color: #eab308;
+        }
+        .status-badge.connecting .status-dot {
+            background: #eab308;
+            animation: pulse 1s infinite;
+        }
+
+        /* Connected state - solid green */
+        .status-badge.connected {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--success);
+        }
         .status-badge.connected .status-dot {
             background: var(--success);
         }
 
+        /* Recording state - pulsing red */
         .status-badge.recording .status-dot {
             background: var(--danger);
             animation: pulse 1.5s infinite;
         }
 
+        /* Error/Disconnected state - red */
+        .status-badge.error, .status-badge.disconnected {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+        }
+        .status-badge.error .status-dot, .status-badge.disconnected .status-dot {
+            background: var(--danger);
+        }
+
+        /* Loading models state */
+        .status-badge.loading {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--primary);
+        }
+        .status-badge.loading .status-dot {
+            background: var(--primary);
+            animation: pulse 1.2s infinite;
+        }
+
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        /* Reconnect button */
+        .reconnect-btn {
+            display: none;
+            padding: 6px 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-left: 8px;
+        }
+        .reconnect-btn:hover {
+            background: var(--primary-hover);
+            transform: scale(1.02);
+        }
+        .reconnect-btn.visible {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Toggle Switch Styles */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--card-secondary);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-muted);
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--primary);
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+            background-color: white;
         }
 
         .chat-messages {
@@ -672,6 +822,208 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        /* Enhanced Analysis Loading Animation */
+        .analysis-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 40px;
+            gap: 24px;
+        }
+        
+        .analysis-loading-spinner {
+            width: 80px;
+            height: 80px;
+            position: relative;
+        }
+        
+        .analysis-loading-spinner::before,
+        .analysis-loading-spinner::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+        }
+        
+        .analysis-loading-spinner::before {
+            width: 100%;
+            height: 100%;
+            border: 4px solid var(--border-color);
+            border-top-color: var(--accent);
+            animation: spin 1s linear infinite;
+        }
+        
+        .analysis-loading-spinner::after {
+            width: 60%;
+            height: 60%;
+            top: 20%;
+            left: 20%;
+            border: 3px solid transparent;
+            border-bottom-color: var(--success);
+            animation: spin 0.8s linear infinite reverse;
+        }
+        
+        .analysis-loading-text {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        
+        .analysis-loading-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        
+        .analysis-step {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+        }
+        
+        .analysis-step.active {
+            color: var(--accent);
+        }
+        
+        .analysis-step.complete {
+            color: var(--success);
+        }
+        
+        .analysis-step-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+        
+        .analysis-step.active .analysis-step-icon {
+            border-color: var(--accent);
+            animation: pulse 1s ease-in-out infinite;
+        }
+        
+        .analysis-step.complete .analysis-step-icon {
+            background: var(--success);
+            border-color: var(--success);
+            color: white;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+        
+        /* Achievement Toast Notification */
+        .achievement-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transform: translateX(120%);
+            transition: transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            max-width: 350px;
+        }
+        
+        .achievement-toast.visible {
+            transform: translateX(0);
+        }
+        
+        .achievement-icon {
+            font-size: 2.5rem;
+            animation: bounce 0.6s ease-in-out;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .achievement-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .achievement-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.9;
+        }
+        
+        .achievement-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        
+        .achievement-description {
+            font-size: 0.8rem;
+            opacity: 0.85;
+        }
+        
+        /* Achievement Badge in Results */
+        .achievements-section {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .achievements-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        
+        .achievement-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+        
+        .achievement-badge.new {
+            animation: glow 1s ease-in-out infinite alternate;
+        }
+        
+        .new-count {
+            color: #4ade80;
+            font-weight: 600;
+            font-size: 0.9em;
+            margin-left: 8px;
+        }
+        
+        @keyframes glow {
+            from { box-shadow: 0 0 5px rgba(102, 126, 234, 0.3); }
+            to { box-shadow: 0 0 15px rgba(102, 126, 234, 0.6); }
+        }
+        
+        .achievement-badge-icon {
+            font-size: 1.2rem;
+        }
 
         /* Icons (simple CSS-based) */
         .icon {
@@ -839,11 +1191,173 @@
         .collapse-icon.open {
             transform: rotate(180deg);
         }
+
+        /* Malwarebytes Browser Guard Warning Banner */
+        .security-warning-banner {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10000;
+            background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+            color: white;
+            padding: 16px 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s ease-out;
+        }
+        .security-warning-banner.visible {
+            display: block;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); }
+            to { transform: translateY(0); }
+        }
+        .warning-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .warning-icon {
+            font-size: 2rem;
+            flex-shrink: 0;
+        }
+        .warning-text {
+            flex: 1;
+        }
+        .warning-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .warning-description {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            opacity: 0.95;
+            margin-bottom: 12px;
+        }
+        .warning-steps {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+        }
+        .warning-steps ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .warning-steps li {
+            margin-bottom: 4px;
+            font-size: 0.85rem;
+        }
+        .warning-steps strong {
+            color: #fff;
+        }
+        .warning-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .warning-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        .warning-btn.primary {
+            background: white;
+            color: #f7931e;
+        }
+        .warning-btn.primary:hover {
+            background: #f0f0f0;
+            transform: scale(1.02);
+        }
+        .warning-btn.secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+        .warning-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .warning-close {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            line-height: 1;
+        }
+        .warning-close:hover {
+            opacity: 1;
+        }
+        .warning-badge {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        body.has-warning-banner {
+            padding-top: 0;
+        }
+        body.has-warning-banner .header {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
+    <!-- Malwarebytes Browser Guard Warning Banner -->
+    <div id="malwarebytesWarning" class="security-warning-banner">
+        <button class="warning-close" onclick="dismissMalwarebytesWarning()" title="Dismiss">&times;</button>
+        <div class="warning-content">
+            <div class="warning-icon">🛡️</div>
+            <div class="warning-text">
+                <div class="warning-title">
+                    <span>Malwarebytes Browser Guard Detected</span>
+                    <span class="warning-badge">FALSE POSITIVE</span>
+                </div>
+                <div class="warning-description">
+                    Your browser extension is flagging <strong>intentioned.tech</strong> as "Risky TLD" with aggressive protection. 
+                    This is a <strong>100% false positive</strong>. Malwarebytes blocks newer TLDs like .tech, .xyz, .club out of the box 
+                    until they build reputation—even though .tech is a standard, respected domain for developers and startups.
+                </div>
+                <div class="warning-steps">
+                    <strong>To whitelist this site:</strong>
+                    <ol>
+                        <li>Click the <strong>Malwarebytes (M) icon</strong> in your browser toolbar</li>
+                        <li>Click the <strong>three dots (⋮)</strong> menu next to "Browser Guard"</li>
+                        <li>Select <strong>"Allow List"</strong> or <strong>"Trust this site"</strong></li>
+                        <li>Add <strong>intentioned.tech</strong> to the list</li>
+                    </ol>
+                </div>
+                <div class="warning-actions">
+                    <button class="warning-btn primary" onclick="dismissMalwarebytesWarning(true)">
+                        ✓ Got it, I'll whitelist
+                    </button>
+                    <button class="warning-btn secondary" onclick="dismissMalwarebytesWarning()">
+                        Dismiss for now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <header class="header">
-        <h1>Intentioned: A Self-Hosted and Modular AGPL Licensed Social Training Application</h1>
+        <h1>Intentioned: Master Every Connection</h1>
         <p class="subtitle">Practice conversations, improve communication skills, and receive real-time feedback</p>
     </header>
 
@@ -853,27 +1367,9 @@
             <!-- Scenario Selection -->
             <div class="card">
                 <h3 class="card-title">Training Scenario</h3>
-                <div class="scenario-list">
-                    <button class="scenario-btn active" data-scenario="general">
-                        <span class="label">💬 General Assistant</span>
-                        <span class="desc">Practice casual conversations with an AI helper. Perfect for warming up your communication skills.</span>
-                    </button>
-                    <button class="scenario-btn" data-scenario="tutor">
-                        <span class="label">📚 Study Tutor</span>
-                        <span class="desc">Get academic help while practicing how to ask questions and explain your understanding.</span>
-                    </button>
-                    <button class="scenario-btn" data-scenario="coding">
-                        <span class="label">💻 Coding Assistant</span>
-                        <span class="desc">Learn to articulate technical problems clearly and follow debugging conversations.</span>
-                    </button>
-                    <button class="scenario-btn" data-scenario="creative">
-                        <span class="label">✨ Creative Partner</span>
-                        <span class="desc">Collaborate on stories and ideas. Practice giving and receiving creative feedback.</span>
-                    </button>
-                    <button class="scenario-btn" data-scenario="parent-teacher">
-                        <span class="label">🎓 Parent-Teacher Conference</span>
-                        <span class="desc">Simulate challenging parent-teacher meetings. Practice staying calm and professional.</span>
-                    </button>
+                <div class="scenario-list" id="scenarioList">
+                    <!-- Scenarios loaded dynamically from config.json -->
+                    <div class="loading-scenarios">Loading scenarios...</div>
                 </div>
             </div>
 
@@ -918,13 +1414,31 @@
                     <div class="settings-section">
                         <label class="settings-label">Text-to-Speech Engine</label>
                         <select id="ttsEngineSelect" class="settings-select">
-                            <option value="vibevoice">VibeVoice (Neural)</option>
-                            <option value="edge">Edge TTS</option>
+                            <option value="kokoro">Kokoro (82M, Fast)</option>
+                            <option value="vibevoice">VibeVoice (500M, Neural)</option>
+                            <option value="edge">Edge TTS (Online)</option>
                             <option value="pyttsx3">pyttsx3 (Offline)</option>
                         </select>
                     </div>
 
-                    <div class="settings-section" id="vibevoiceVoiceSection">
+                    <div class="settings-section" id="kokoroVoiceSection">
+                        <label class="settings-label">Kokoro Voice</label>
+                        <select id="kokoroVoiceSelect" class="settings-select">
+                            <option value="af_heart">Heart (Female, American)</option>
+                            <option value="af_bella">Bella (Female, American)</option>
+                            <option value="af_nicole">Nicole (Female, American)</option>
+                            <option value="af_sarah">Sarah (Female, American)</option>
+                            <option value="af_sky">Sky (Female, American)</option>
+                            <option value="am_adam">Adam (Male, American)</option>
+                            <option value="am_michael">Michael (Male, American)</option>
+                            <option value="bf_emma">Emma (Female, British)</option>
+                            <option value="bf_isabella">Isabella (Female, British)</option>
+                            <option value="bm_george">George (Male, British)</option>
+                            <option value="bm_lewis">Lewis (Male, British)</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-section" id="vibevoiceVoiceSection" style="display: none;">
                         <label class="settings-label">VibeVoice Voice</label>
                         <select id="vibevoiceVoiceSelect" class="settings-select">
                             <!-- Populated dynamically -->
@@ -942,8 +1456,9 @@
                     <div class="settings-section">
                         <label class="settings-label">Speech-to-Text Engine</label>
                         <select id="sttEngineSelect" class="settings-select">
-                            <option value="wav2vec2">Wav2Vec2 (Default)</option>
-                            <option value="vosk">Vosk</option>
+                            <option value="wav2vec2">Wav2Vec2 (Fast, Default)</option>
+                            <option value="vosk">Vosk (Offline)</option>
+                            <option value="parakeet">Parakeet TDT (Python 3.12 only)</option>
                         </select>
                     </div>
 
@@ -961,6 +1476,25 @@
                         <div class="settings-row">
                             <input type="range" id="temperatureSlider" class="settings-slider" min="0" max="100" value="70">
                             <span class="slider-value" id="temperatureValue">0.7</span>
+                        </div>
+                    </div>
+
+                    <!-- Audio Feedback Settings -->
+                    <div class="settings-section" style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 8px;">
+                        <label class="settings-label">🔊 Audio Feedback</label>
+                        <div class="settings-row" style="justify-content: space-between;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Sound Effects</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="audioFeedbackToggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="settings-row" style="justify-content: space-between; margin-top: 8px;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Verbal Announcements</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="verbalFeedbackToggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
                     </div>
 
@@ -1034,9 +1568,14 @@
             <div class="chat-container">
                 <div class="chat-header">
                     <h2>Conversation</h2>
-                    <div class="status-badge" id="statusBadge">
-                        <div class="status-dot"></div>
-                        <span id="statusText">Connecting...</span>
+                    <div style="display: flex; align-items: center;">
+                        <div class="status-badge connecting" id="statusBadge">
+                            <div class="status-dot"></div>
+                            <span id="statusText">Connecting to server...</span>
+                        </div>
+                        <button class="reconnect-btn" id="reconnectBtn" title="Reconnect to server">
+                            🔄 Reconnect
+                        </button>
                     </div>
                 </div>
                 <div class="chat-messages" id="chatLog">
@@ -1063,6 +1602,16 @@
                     <span>Analyzing your session...</span>
                 </div>
             </div>
+        </div>
+    </div>
+    
+    <!-- Achievement Toast Container -->
+    <div id="achievementToast" class="achievement-toast">
+        <span class="achievement-icon">🏆</span>
+        <div class="achievement-content">
+            <div class="achievement-title">Achievement Unlocked!</div>
+            <div class="achievement-name" id="achievementName"></div>
+            <div class="achievement-description" id="achievementDesc"></div>
         </div>
     </div>
 
@@ -1107,6 +1656,63 @@
 
     <script src="script.js?v=13"></script>
     <script>
+        // --- Cookie Management for Persistent Settings ---
+        const CookieManager = {
+            // Set a cookie with expiration in days
+            set(name, value, days = 365) {
+                const expires = new Date(Date.now() + days * 864e5).toUTCString();
+                document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(JSON.stringify(value))}; expires=${expires}; path=/; SameSite=Lax`;
+            },
+            
+            // Get a cookie value
+            get(name) {
+                const cookies = document.cookie.split('; ');
+                for (const cookie of cookies) {
+                    const [key, val] = cookie.split('=');
+                    if (decodeURIComponent(key) === name) {
+                        try {
+                            return JSON.parse(decodeURIComponent(val));
+                        } catch {
+                            return decodeURIComponent(val);
+                        }
+                    }
+                }
+                return null;
+            },
+            
+            // Delete a cookie
+            delete(name) {
+                document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+            },
+            
+            // Get all settings from cookies
+            getAllSettings() {
+                return {
+                    tts_engine: this.get('intentioned_tts_engine') || 'kokoro',
+                    kokoro_voice: this.get('intentioned_kokoro_voice') || 'af_heart',
+                    vibevoice_voice: this.get('intentioned_vibevoice_voice') || 'en-Grace_woman',
+                    edge_tts_voice: this.get('intentioned_edge_voice') || 'female_us',
+                    stt_engine: this.get('intentioned_stt_engine') || 'parakeet',
+                    llm_max_tokens: this.get('intentioned_max_tokens') || 150,
+                    llm_temperature: this.get('intentioned_temperature') || 0.7,
+                    scenario: this.get('intentioned_scenario') || 'general',
+                    mic_mode: this.get('intentioned_mic_mode') || 'vad',
+                    tts_muted: this.get('intentioned_tts_muted') || false
+                };
+            },
+            
+            // Save all current settings to cookies
+            saveAllSettings(settings) {
+                this.set('intentioned_tts_engine', settings.tts_engine);
+                this.set('intentioned_kokoro_voice', settings.kokoro_voice);
+                this.set('intentioned_vibevoice_voice', settings.vibevoice_voice);
+                this.set('intentioned_edge_voice', settings.edge_tts_voice);
+                this.set('intentioned_stt_engine', settings.stt_engine);
+                this.set('intentioned_max_tokens', settings.llm_max_tokens);
+                this.set('intentioned_temperature', settings.llm_temperature);
+            }
+        };
+
         // --- Settings Management ---
         function toggleCollapsible(header) {
             const content = header.nextElementSibling;
@@ -1117,15 +1723,36 @@
 
         // Initialize settings UI
         async function initSettings() {
+            // First, load from cookies for immediate display
+            const cookieSettings = CookieManager.getAllSettings();
+            
+            // Apply cookie settings to UI immediately
+            document.getElementById('ttsEngineSelect').value = cookieSettings.tts_engine;
+            document.getElementById('kokoroVoiceSelect').value = cookieSettings.kokoro_voice;
+            document.getElementById('sttEngineSelect').value = cookieSettings.stt_engine;
+            document.getElementById('maxTokensSlider').value = cookieSettings.llm_max_tokens;
+            document.getElementById('maxTokensValue').textContent = cookieSettings.llm_max_tokens;
+            document.getElementById('temperatureSlider').value = Math.round(cookieSettings.llm_temperature * 100);
+            document.getElementById('temperatureValue').textContent = cookieSettings.llm_temperature.toFixed(1);
+            
+            // Scenario selection is restored in loadScenarios() after dynamic load
+            
+            // Restore mic mode from cookie
+            if (cookieSettings.mic_mode) {
+                document.querySelectorAll('#modeToggle .toggle-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.mode === cookieSettings.mic_mode);
+                });
+            }
+            
+            updateVoiceSections();
+            
+            // Then fetch server settings and available options
             try {
                 const response = await fetch('/api/settings');
                 const data = await response.json();
                 const opts = data.options || data.available || {};
                 
-                // Populate TTS engine (API uses id "edge" not "edge_tts")
-                document.getElementById('ttsEngineSelect').value = data.current.tts_engine || 'vibevoice';
-                
-                // Populate voice dropdowns
+                // Populate voice dropdowns with server options
                 const vibevoiceSelect = document.getElementById('vibevoiceVoiceSelect');
                 vibevoiceSelect.innerHTML = '';
                 (opts.vibevoice_voices || []).forEach(voice => {
@@ -1134,7 +1761,7 @@
                     opt.textContent = voice.name;
                     vibevoiceSelect.appendChild(opt);
                 });
-                vibevoiceSelect.value = data.current.vibevoice_voice || '';
+                vibevoiceSelect.value = cookieSettings.vibevoice_voice || data.current.vibevoice_voice || '';
                 
                 const edgeSelect = document.getElementById('edgeVoiceSelect');
                 edgeSelect.innerHTML = '';
@@ -1144,28 +1771,16 @@
                     opt.textContent = voice.name;
                     edgeSelect.appendChild(opt);
                 });
-                edgeSelect.value = data.current.edge_tts_voice || '';
+                edgeSelect.value = cookieSettings.edge_tts_voice || data.current.edge_tts_voice || '';
                 
-                // STT engine
-                document.getElementById('sttEngineSelect').value = data.current.stt_engine || 'wav2vec2';
-                
-                // LLM settings
-                document.getElementById('maxTokensSlider').value = data.current.llm_max_tokens || 150;
-                document.getElementById('maxTokensValue').textContent = data.current.llm_max_tokens || 150;
-                
-                const temp = data.current.llm_temperature || 0.7;
-                document.getElementById('temperatureSlider').value = Math.round(temp * 100);
-                document.getElementById('temperatureValue').textContent = temp.toFixed(1);
-                
-                // Show/hide voice sections based on TTS engine
-                updateVoiceSections();
             } catch (err) {
-                console.error('Failed to load settings:', err);
+                console.error('Failed to load settings from server:', err);
             }
         }
 
         function updateVoiceSections() {
             const engine = document.getElementById('ttsEngineSelect').value;
+            document.getElementById('kokoroVoiceSection').style.display = engine === 'kokoro' ? 'block' : 'none';
             document.getElementById('vibevoiceVoiceSection').style.display = engine === 'vibevoice' ? 'block' : 'none';
             document.getElementById('edgeVoiceSection').style.display = engine === 'edge' || engine === 'edge_tts' ? 'block' : 'none';
         }
@@ -1183,12 +1798,16 @@
         document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
             const settings = {
                 tts_engine: document.getElementById('ttsEngineSelect').value,
+                kokoro_voice: document.getElementById('kokoroVoiceSelect').value,
                 vibevoice_voice: document.getElementById('vibevoiceVoiceSelect').value,
                 edge_tts_voice: document.getElementById('edgeVoiceSelect').value,
                 stt_engine: document.getElementById('sttEngineSelect').value,
                 llm_max_tokens: parseInt(document.getElementById('maxTokensSlider').value),
                 llm_temperature: parseFloat(document.getElementById('temperatureSlider').value) / 100
             };
+            
+            // Save to cookies for persistence
+            CookieManager.saveAllSettings(settings);
             
             try {
                 const response = await fetch('/api/settings', {
@@ -1198,13 +1817,23 @@
                 });
                 const result = await response.json();
                 if (result.status === 'ok') {
-                    alert('Settings saved successfully!');
+                    alert('Settings saved successfully! Your preferences will be remembered.');
                 } else {
-                    alert('Failed to save settings: ' + (result.error || 'Unknown error'));
+                    alert('Failed to save settings to server: ' + (result.error || 'Unknown error') + '\n\nSettings saved locally in cookies.');
                 }
             } catch (err) {
-                alert('Failed to save settings: ' + err.message);
+                alert('Server unavailable. Settings saved locally in cookies.');
             }
+        });
+
+        // Note: Scenario buttons are loaded dynamically via loadScenarios()
+        // Their event listeners are attached in attachScenarioListeners()
+
+        // Save mic mode to cookie when changed
+        document.querySelectorAll('#modeToggle .toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                CookieManager.set('intentioned_mic_mode', btn.dataset.mode);
+            });
         });
 
         // --- Session Results Management ---
@@ -1312,7 +1941,67 @@
         document.addEventListener('DOMContentLoaded', () => {
             initSettings();
             loadResultsList();
+            loadScenarios();
         });
+        
+        // Load scenarios from server config
+        async function loadScenarios() {
+            const container = document.getElementById('scenarioList');
+            if (!container) return;
+            
+            try {
+                const response = await fetch('/api/scenarios');
+                const data = await response.json();
+                const scenarios = data.scenarios || [];
+                
+                if (scenarios.length === 0) {
+                    container.innerHTML = '<div class="loading-scenarios">No scenarios available</div>';
+                    return;
+                }
+                
+                // Get saved scenario from cookie
+                const savedScenario = CookieManager.get('intentioned_scenario') || 'general';
+                
+                // Build scenario buttons HTML
+                let html = '';
+                scenarios.forEach(scenario => {
+                    const isActive = scenario.id === savedScenario || 
+                                     (savedScenario === 'parent-teacher-reversed' && scenario.id === 'parent-teacher-reversed');
+                    
+                    html += `
+                        <button class="scenario-btn ${isActive ? 'active' : ''}" data-scenario="${scenario.id}">
+                            <span class="label">${scenario.icon} ${scenario.name}</span>
+                            <span class="desc">${scenario.description}</span>
+                        </button>
+                    `;
+                });
+                
+                container.innerHTML = html;
+                
+                // Attach event listeners to new buttons
+                attachScenarioListeners();
+                
+            } catch (err) {
+                console.error('Failed to load scenarios:', err);
+                container.innerHTML = '<div class="loading-scenarios">Failed to load scenarios</div>';
+            }
+        }
+        
+        // Attach click listeners to scenario buttons
+        function attachScenarioListeners() {
+            document.querySelectorAll('.scenario-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    const scenario = btn.dataset.scenario;
+                    CookieManager.set('intentioned_scenario', scenario);
+                    
+                    // Dispatch event for script.js to handle
+                    window.dispatchEvent(new CustomEvent('scenarioChanged', { detail: { scenario } }));
+                });
+            });
+        }
 
         // Helper to generate analysis HTML (used by both live analysis and viewing saved results)
         function generateAnalysisHTML(result) {

@@ -2,6 +2,163 @@
 const IS_LOCAL_CONTEXT = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const HAS_SECURE_CONTEXT = window.isSecureContext || IS_LOCAL_CONTEXT;
 
+// ============================================
+// MALWAREBYTES BROWSER GUARD DETECTION
+// Detects aggressive TLD blocking and shows warning
+// ============================================
+
+function detectMalwarebytes() {
+    // Check if user has already dismissed the warning permanently
+    if (localStorage.getItem('malwarebytes_warning_dismissed') === 'permanent') {
+        return;
+    }
+    
+    let malwarebytesDetected = false;
+    
+    // Method 1: Invisible blocked resource detection
+    // Load a 1x1 transparent image from a "risky TLD" that Malwarebytes blocks
+    // If it fails to load, Browser Guard may be blocking it
+    const testImg = new Image();
+    testImg.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;';
+    let imgLoaded = false;
+    
+    testImg.onload = () => {
+        imgLoaded = true;
+        // Image loaded - no blocking detected, still check for other indicators
+        checkMalwarebytesIndicators();
+    };
+    
+    testImg.onerror = () => {
+        // Resource blocked - check if it's due to Browser Guard
+        // Could be network error or extension blocking
+        checkMalwarebytesIndicators();
+    };
+    
+    // Use our own domain's favicon as a test (if .tech is blocked, this will fail)
+    // Fall back to checking indicators after a short timeout
+    testImg.src = window.location.origin + '/favicon.ico?' + Date.now();
+    
+    // Cleanup after test
+    setTimeout(() => {
+        if (!imgLoaded) {
+            // Image didn't load - might be blocked
+            checkMalwarebytesIndicators();
+        }
+        testImg.remove();
+    }, 2000);
+    
+    // Method 2: Intercept console to detect their logging
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    
+    const checkForMalwarebytesLog = (args) => {
+        try {
+            const message = args.map(a => String(a)).join(' ');
+            if (message.includes('TSS:') || 
+                message.includes('MBTSS') || 
+                message.includes('Risky TLD') ||
+                message.includes('aggressive protection') ||
+                message.includes('Browser Guard') ||
+                message.includes('isProtectionEnabled') ||
+                message.includes('SCHJK:')) {
+                if (!malwarebytesDetected) {
+                    malwarebytesDetected = true;
+                    showMalwarebytesWarning();
+                }
+            }
+        } catch (e) {}
+    };
+    
+    console.log = function(...args) {
+        checkForMalwarebytesLog(args);
+        originalConsoleLog.apply(console, args);
+    };
+    
+    console.warn = function(...args) {
+        checkForMalwarebytesLog(args);
+        originalConsoleWarn.apply(console, args);
+    };
+}
+
+function checkMalwarebytesIndicators() {
+    // Check for specific DOM modifications by Malwarebytes
+    setTimeout(() => {
+        // Look for Malwarebytes injected elements
+        const mbElements = document.querySelectorAll(
+            '[id*="mbtss"], [class*="mbtss"], [data-mb], ' +
+            'script[src*="content-scripts"], script[src*="injection-tss"]'
+        );
+        if (mbElements.length > 0) {
+            showMalwarebytesWarning();
+            return;
+        }
+        
+        // Check for their bridge message listener or global objects
+        if (window.__MBTSS_BRIDGE__ || 
+            window.__MB_EXTENSION__ ||
+            window.MB_BROWSER_GUARD) {
+            showMalwarebytesWarning();
+            return;
+        }
+        
+        // Check for nonce attributes they inject
+        const nonceScripts = document.querySelectorAll('script[nonce]');
+        for (const script of nonceScripts) {
+            if (script.textContent && script.textContent.includes('MBTSS')) {
+                showMalwarebytesWarning();
+                return;
+            }
+        }
+    }, 500);
+    
+    // Method 4: Detect blocked resources (they often block external scripts)
+    window.addEventListener('error', (e) => {
+        if (e.target && e.target.tagName === 'SCRIPT') {
+            if (e.target.src && (
+                e.target.src.includes('cloudflareinsights') ||
+                e.target.src.includes('beacon.min.js')
+            )) {
+                // Cloudflare script blocked - could be Malwarebytes
+                checkMalwarebytesIndicators();
+            }
+        }
+    }, true);
+}
+
+function showMalwarebytesWarning() {
+    const banner = document.getElementById('malwarebytesWarning');
+    if (banner && !banner.classList.contains('visible')) {
+        // Check if already dismissed this session
+        if (sessionStorage.getItem('malwarebytes_warning_dismissed')) {
+            return;
+        }
+        banner.classList.add('visible');
+        document.body.classList.add('has-warning-banner');
+        console.log('[Malwarebytes] Browser Guard detected - showing warning banner');
+    }
+}
+
+function dismissMalwarebytesWarning(permanent = false) {
+    const banner = document.getElementById('malwarebytesWarning');
+    if (banner) {
+        banner.classList.remove('visible');
+        document.body.classList.remove('has-warning-banner');
+    }
+    
+    if (permanent) {
+        localStorage.setItem('malwarebytes_warning_dismissed', 'permanent');
+    } else {
+        sessionStorage.setItem('malwarebytes_warning_dismissed', 'true');
+    }
+}
+
+// Run detection on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', detectMalwarebytes);
+} else {
+    detectMalwarebytes();
+}
+
 // Auto-detect WebSocket scheme based on page protocol
 const WS_SCHEME = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 // If we're behind Cloudflare (or any external HTTPS on 443), do NOT append an explicit port.
@@ -48,12 +205,671 @@ const VAD_THRESHOLD = 0.02;      // Increased sensitivity threshold (was 0.015)
 const VAD_RELEASE_MS = 1500;     // Time to wait after voice stops before ending capture (was 1200)
 const VAD_MIN_ACTIVE_MS = 300;   // Minimum speaking duration before we consider it speech (was 200)
 const VAD_SMOOTHING_FRAMES = 3;  // Number of frames to average for smoother detection
+
+// ============================================
+// AUDIO FEEDBACK SYSTEM
+// Uses Web Audio API for royalty-free sounds
+// and Speech Synthesis for verbal feedback
+// ============================================
+
+let audioContext = null;
+let audioFeedbackEnabled = true;
+let verbalFeedbackEnabled = true;
+let lastSpokenState = null; // Prevent duplicate announcements
+let audioUnlocked = false; // Track if audio has been unlocked by user interaction
+
+function getAudioContext() {
+    if (!audioContext) {
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            console.log('[Audio] AudioContext created, state:', audioContext.state);
+        } catch (e) {
+            console.error('[Audio] Failed to create AudioContext:', e);
+            return null;
+        }
+    }
+    // Resume if suspended (browsers require user interaction)
+    if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('[Audio] AudioContext resumed');
+            audioUnlocked = true;
+        }).catch(e => {
+            console.warn('[Audio] Failed to resume AudioContext:', e);
+        });
+    }
+    return audioContext;
+}
+
+// Unlock audio on first user interaction (required by browsers)
+function unlockAudio() {
+    if (audioUnlocked) return;
+    
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+            audioUnlocked = true;
+            console.log('[Audio] Audio unlocked by user interaction');
+        });
+    } else if (ctx) {
+        audioUnlocked = true;
+    }
+}
+
+// Add unlock listeners for various user interactions
+document.addEventListener('click', unlockAudio, { once: false });
+document.addEventListener('keydown', unlockAudio, { once: false });
+document.addEventListener('touchstart', unlockAudio, { once: false });
+
+// Play a tone with specific frequency, duration, and type
+function playTone(frequency, duration, type = 'sine', volume = 0.3) {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) {
+            console.warn('[Audio] No AudioContext available');
+            return;
+        }
+        
+        // Check if context is running
+        if (ctx.state !== 'running') {
+            console.log('[Audio] AudioContext not running, state:', ctx.state);
+            // Try to resume
+            ctx.resume().catch(() => {});
+            return; // Skip this sound, next one should work
+        }
+        
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
+        
+        // Envelope for smooth sound
+        gainNode.gain.setValueAtTime(0, ctx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.02);
+        gainNode.gain.linearRampToValueAtTime(volume * 0.7, ctx.currentTime + duration * 0.5);
+        gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
+        
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + duration);
+    } catch (e) {
+        console.warn('[Audio] Tone playback error:', e);
+    }
+}
+
+// Sound effect generators (all royalty-free, generated programmatically)
+const StatusSounds = {
+    // Pleasant ascending chime for connected
+    connected: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(523.25, 0.15, 'sine', 0.25); // C5
+        setTimeout(() => playTone(659.25, 0.15, 'sine', 0.25), 100); // E5
+        setTimeout(() => playTone(783.99, 0.25, 'sine', 0.3), 200); // G5
+    },
+    
+    // Soft pulsing tone for connecting
+    connecting: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(440, 0.2, 'sine', 0.15); // A4
+    },
+    
+    // Descending tone for disconnected
+    disconnected: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(523.25, 0.2, 'sine', 0.25); // C5
+        setTimeout(() => playTone(392, 0.3, 'sine', 0.2), 150); // G4
+    },
+    
+    // Alert tone for error
+    error: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(330, 0.15, 'sawtooth', 0.2); // E4
+        setTimeout(() => playTone(262, 0.25, 'sawtooth', 0.15), 120); // C4
+    },
+    
+    // Subtle tone for loading
+    loading: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(587.33, 0.15, 'sine', 0.15); // D5
+    },
+    
+    // Quick blip for recording start
+    recordingStart: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(880, 0.1, 'sine', 0.2); // A5
+    },
+    
+    // Quick descending blip for recording stop
+    recordingStop: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(659.25, 0.1, 'sine', 0.15); // E5
+    },
+    
+    // Button click sound - soft pop
+    buttonClick: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(1200, 0.05, 'sine', 0.15);
+        setTimeout(() => playTone(800, 0.03, 'sine', 0.1), 30);
+    },
+    
+    // Achievement unlocked sound - triumphant fanfare
+    achievement: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(523.25, 0.15, 'sine', 0.3); // C5
+        setTimeout(() => playTone(659.25, 0.15, 'sine', 0.3), 100); // E5
+        setTimeout(() => playTone(783.99, 0.15, 'sine', 0.35), 200); // G5
+        setTimeout(() => playTone(1046.5, 0.3, 'sine', 0.4), 300); // C6
+    },
+    
+    // Analysis complete sound
+    analysisComplete: () => {
+        if (!audioFeedbackEnabled) return;
+        playTone(440, 0.1, 'sine', 0.2);
+        setTimeout(() => playTone(554.37, 0.1, 'sine', 0.2), 80);
+        setTimeout(() => playTone(659.25, 0.2, 'sine', 0.25), 160);
+    }
+};
+
+// ============================================
+// AMBIENT AUDIO SYSTEM
+// Plays subtle background audio during loading
+// ============================================
+let ambientOscillators = [];
+let ambientGainNode = null;
+let isAmbientPlaying = false;
+
+function startAmbientAudio() {
+    if (!audioFeedbackEnabled || isAmbientPlaying) return;
+    
+    try {
+        const ctx = getAudioContext();
+        if (!ctx || ctx.state !== 'running') return;
+        
+        isAmbientPlaying = true;
+        ambientGainNode = ctx.createGain();
+        ambientGainNode.connect(ctx.destination);
+        ambientGainNode.gain.setValueAtTime(0, ctx.currentTime);
+        ambientGainNode.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 2);
+        
+        // Create gentle ambient drone with multiple oscillators
+        const frequencies = [110, 165, 220, 330]; // A2, E3, A3, E4 - subtle A minor
+        frequencies.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const oscGain = ctx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+            
+            // Add subtle pitch modulation
+            const lfo = ctx.createOscillator();
+            const lfoGain = ctx.createGain();
+            lfo.type = 'sine';
+            lfo.frequency.setValueAtTime(0.1 + i * 0.05, ctx.currentTime);
+            lfoGain.gain.setValueAtTime(0.5, ctx.currentTime);
+            lfo.connect(lfoGain);
+            lfoGain.connect(osc.frequency);
+            lfo.start();
+            
+            oscGain.gain.setValueAtTime(0.25 / (i + 1), ctx.currentTime);
+            osc.connect(oscGain);
+            oscGain.connect(ambientGainNode);
+            osc.start();
+            
+            ambientOscillators.push({ osc, lfo, oscGain });
+        });
+        
+        console.log('[Audio] Ambient audio started');
+    } catch (e) {
+        console.warn('[Audio] Failed to start ambient audio:', e);
+    }
+}
+
+function stopAmbientAudio() {
+    if (!isAmbientPlaying) return;
+    
+    try {
+        const ctx = getAudioContext();
+        if (ctx && ambientGainNode) {
+            ambientGainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + 1);
+        }
+        
+        setTimeout(() => {
+            ambientOscillators.forEach(({ osc, lfo }) => {
+                try {
+                    osc.stop();
+                    lfo.stop();
+                } catch (e) {}
+            });
+            ambientOscillators = [];
+            ambientGainNode = null;
+            isAmbientPlaying = false;
+            console.log('[Audio] Ambient audio stopped');
+        }, 1100);
+    } catch (e) {
+        console.warn('[Audio] Failed to stop ambient audio:', e);
+    }
+}
+
+// ============================================
+// HAPTIC FEEDBACK (Mobile Vibration)
+// Provides tactile feedback on supported devices
+// ============================================
+const Haptics = {
+    // Check if vibration is supported
+    isSupported: () => 'vibrate' in navigator,
+    
+    // Light tap - for button clicks
+    light: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate(10);
+        }
+    },
+    
+    // Medium tap - for confirmations
+    medium: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate(25);
+        }
+    },
+    
+    // Heavy tap - for important actions
+    heavy: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate(50);
+        }
+    },
+    
+    // Double tap - for toggles
+    double: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate([15, 50, 15]);
+        }
+    },
+    
+    // Success pattern - for achievements/completion
+    success: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate([20, 80, 40, 80, 20]);
+        }
+    },
+    
+    // Error pattern - for warnings
+    error: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate([100, 50, 100]);
+        }
+    },
+    
+    // Recording start
+    recordStart: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate([30, 30, 30]);
+        }
+    },
+    
+    // Recording stop
+    recordStop: () => {
+        if (Haptics.isSupported()) {
+            navigator.vibrate(40);
+        }
+    }
+};
+
+// Attach click sounds and haptics to all buttons
+function attachButtonClickSounds() {
+    document.querySelectorAll('button, .btn, [role="button"]').forEach(btn => {
+        if (!btn.hasAttribute('data-click-sound')) {
+            btn.setAttribute('data-click-sound', 'true');
+            btn.addEventListener('click', () => {
+                StatusSounds.buttonClick();
+                Haptics.light();
+            });
+        }
+    });
+}
+
+// ============================================
+// ACHIEVEMENT SYSTEM
+// Track and celebrate user milestones
+// ============================================
+const AchievementSystem = {
+    // All available achievements
+    achievements: {
+        first_session: {
+            id: 'first_session',
+            name: 'First Steps',
+            description: 'Complete your first session',
+            icon: '🎯',
+            condition: (results, stats) => stats.totalSessions >= 1
+        },
+        perfect_score: {
+            id: 'perfect_score',
+            name: 'Perfection',
+            description: 'Achieve a score of 100',
+            icon: '💯',
+            condition: (results) => results.overall_score === 100
+        },
+        excellent_score: {
+            id: 'excellent_score',
+            name: 'Excellence',
+            description: 'Score 90 or above',
+            icon: '⭐',
+            condition: (results) => results.overall_score >= 90
+        },
+        no_fillers: {
+            id: 'no_fillers',
+            name: 'Smooth Talker',
+            description: 'Complete a session with zero filler words',
+            icon: '🎤',
+            condition: (results) => results.filler_words?.count === 0
+        },
+        low_fillers: {
+            id: 'low_fillers',
+            name: 'Articulate',
+            description: 'Use 2 or fewer filler words',
+            icon: '💬',
+            condition: (results) => results.filler_words?.count <= 2
+        },
+        good_eye_contact: {
+            id: 'good_eye_contact',
+            name: 'Eye Contact Master',
+            description: 'Maintain 80%+ eye contact',
+            icon: '👁️',
+            condition: (results) => results.eye_contact?.percentage >= 80
+        },
+        quick_responder: {
+            id: 'quick_responder',
+            name: 'Quick Thinker',
+            description: 'Average response time under 2 seconds',
+            icon: '⚡',
+            condition: (results) => results.response_time?.avg < 2
+        },
+        patient_listener: {
+            id: 'patient_listener',
+            name: 'Patient Listener',
+            description: 'Complete a session with zero interruptions',
+            icon: '🧘',
+            condition: (results) => results.interruptions?.count === 0
+        },
+        five_sessions: {
+            id: 'five_sessions',
+            name: 'Committed',
+            description: 'Complete 5 sessions',
+            icon: '🔥',
+            condition: (results, stats) => stats.totalSessions >= 5
+        },
+        ten_sessions: {
+            id: 'ten_sessions',
+            name: 'Dedicated',
+            description: 'Complete 10 sessions',
+            icon: '🏆',
+            condition: (results, stats) => stats.totalSessions >= 10
+        },
+        twenty_five_sessions: {
+            id: 'twenty_five_sessions',
+            name: 'Expert',
+            description: 'Complete 25 sessions',
+            icon: '👑',
+            condition: (results, stats) => stats.totalSessions >= 25
+        },
+        improving: {
+            id: 'improving',
+            name: 'On The Rise',
+            description: 'Score higher than your previous session',
+            icon: '📈',
+            condition: (results, stats) => stats.lastScore !== null && results.overall_score > stats.lastScore
+        },
+        consistent: {
+            id: 'consistent',
+            name: 'Consistent Performer',
+            description: 'Score 80+ in 3 consecutive sessions',
+            icon: '🎖️',
+            condition: (results, stats) => {
+                if (stats.recentScores.length < 2) return false;
+                const lastThree = [...stats.recentScores.slice(-2), results.overall_score];
+                return lastThree.every(s => s >= 80);
+            }
+        },
+        all_scenarios: {
+            id: 'all_scenarios',
+            name: 'Versatile',
+            description: 'Try all available scenarios',
+            icon: '🎭',
+            condition: (results, stats) => stats.scenariosPlayed.size >= 5
+        },
+        night_owl: {
+            id: 'night_owl',
+            name: 'Night Owl',
+            description: 'Practice after 10 PM',
+            icon: '🦉',
+            condition: () => new Date().getHours() >= 22
+        },
+        early_bird: {
+            id: 'early_bird',
+            name: 'Early Bird',
+            description: 'Practice before 7 AM',
+            icon: '🐦',
+            condition: () => new Date().getHours() < 7
+        }
+    },
+    
+    // Get user stats from localStorage
+    getStats() {
+        const stored = localStorage.getItem('achievementStats');
+        if (stored) {
+            const stats = JSON.parse(stored);
+            stats.scenariosPlayed = new Set(stats.scenariosPlayed || []);
+            return stats;
+        }
+        return {
+            totalSessions: 0,
+            lastScore: null,
+            recentScores: [],
+            scenariosPlayed: new Set(),
+            unlockedAchievements: []
+        };
+    },
+    
+    // Save stats to localStorage
+    saveStats(stats) {
+        const toSave = {
+            ...stats,
+            scenariosPlayed: Array.from(stats.scenariosPlayed)
+        };
+        localStorage.setItem('achievementStats', JSON.stringify(toSave));
+    },
+    
+    // Get unlocked achievements
+    getUnlocked() {
+        return JSON.parse(localStorage.getItem('unlockedAchievements') || '[]');
+    },
+    
+    // Save unlocked achievements
+    saveUnlocked(achievements) {
+        localStorage.setItem('unlockedAchievements', JSON.stringify(achievements));
+    },
+    
+    // Check for new achievements after a session
+    checkAchievements(results) {
+        const stats = this.getStats();
+        const unlocked = this.getUnlocked();
+        const newAchievements = [];
+        
+        // Update stats
+        stats.totalSessions++;
+        stats.scenariosPlayed.add(results.scenario || 'general');
+        stats.recentScores.push(results.overall_score);
+        if (stats.recentScores.length > 10) {
+            stats.recentScores.shift();
+        }
+        
+        // Check each achievement
+        for (const [id, achievement] of Object.entries(this.achievements)) {
+            if (unlocked.includes(id)) continue; // Already unlocked
+            
+            try {
+                if (achievement.condition(results, stats)) {
+                    newAchievements.push(achievement);
+                    unlocked.push(id);
+                }
+            } catch (e) {
+                console.warn(`Error checking achievement ${id}:`, e);
+            }
+        }
+        
+        // Update last score for next session
+        stats.lastScore = results.overall_score;
+        
+        // Save everything
+        this.saveStats(stats);
+        this.saveUnlocked(unlocked);
+        
+        // Show notifications for new achievements
+        newAchievements.forEach((achievement, i) => {
+            setTimeout(() => this.showAchievementToast(achievement), i * 3500);
+        });
+        
+        return newAchievements;
+    },
+    
+    // Show achievement toast notification
+    showAchievementToast(achievement) {
+        const toast = document.getElementById('achievementToast');
+        if (!toast) return;
+        
+        document.getElementById('achievementName').textContent = `${achievement.icon} ${achievement.name}`;
+        document.getElementById('achievementDesc').textContent = achievement.description;
+        
+        // Play sound and haptic
+        StatusSounds.achievement();
+        Haptics.success();
+        
+        // Show toast
+        toast.classList.add('visible');
+        
+        // Hide after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('visible');
+        }, 3000);
+    },
+    
+    // Get all achievements with unlock status
+    getAllWithStatus() {
+        const unlocked = this.getUnlocked();
+        return Object.values(this.achievements).map(a => ({
+            ...a,
+            unlocked: unlocked.includes(a.id)
+        }));
+    }
+};
+
+// Verbal feedback using Speech Synthesis
+function speakStatus(message, priority = false) {
+    try {
+        if (!verbalFeedbackEnabled) return;
+        if (!window.speechSynthesis) {
+            console.warn('Speech synthesis not supported');
+            return;
+        }
+        
+        // Cancel any ongoing speech if this is priority
+        if (priority) {
+            window.speechSynthesis.cancel();
+        }
+        
+        const utterance = new SpeechSynthesisUtterance(message);
+        utterance.rate = 1.1; // Slightly faster
+        utterance.pitch = 1.0;
+        utterance.volume = 0.8;
+        
+        // Try to use a natural-sounding voice
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find(v => 
+            v.name.includes('Microsoft Zira') || 
+            v.name.includes('Google US English') ||
+            v.name.includes('Samantha') ||
+            v.lang.startsWith('en')
+        );
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
+        }
+        
+        window.speechSynthesis.speak(utterance);
+    } catch (e) {
+        console.warn('[Audio] speakStatus error:', e);
+    }
+}
+
+// Combined audio + verbal feedback for status changes
+function playStatusFeedback(state, message) {
+    // Run async to prevent blocking main thread
+    setTimeout(() => {
+        try {
+            // Prevent duplicate announcements for same state
+            if (state === lastSpokenState && state !== 'recording') return;
+            lastSpokenState = state;
+            
+            // Play sound effect
+            switch (state) {
+                case 'connected':
+                    StatusSounds.connected();
+                    speakStatus('Connected to server');
+                    break;
+                case 'connecting':
+                    StatusSounds.connecting();
+                    // Don't speak for connecting - too frequent
+                    break;
+                case 'disconnected':
+                    StatusSounds.disconnected();
+                    speakStatus('Connection lost. Click reconnect to try again.', true);
+                    break;
+                case 'error':
+                    StatusSounds.error();
+                    speakStatus('Connection error. Click reconnect to try again.', true);
+                    break;
+                case 'loading':
+                    StatusSounds.loading();
+                    speakStatus('Loading AI models');
+                    break;
+                case 'recording':
+                    StatusSounds.recordingStart();
+                    break;
+                case 'recording-stop':
+                    StatusSounds.recordingStop();
+                    break;
+            }
+        } catch (e) {
+            console.warn('[Audio] playStatusFeedback error:', e);
+        }
+    }, 0);
+}
+
+// Toggle functions for user preference
+function toggleAudioFeedback(enabled) {
+    audioFeedbackEnabled = enabled;
+    console.log(`Audio feedback ${enabled ? 'enabled' : 'disabled'}`);
+}
+
+function toggleVerbalFeedback(enabled) {
+    verbalFeedbackEnabled = enabled;
+    console.log(`Verbal feedback ${enabled ? 'enabled' : 'disabled'}`);
+}
+
+// Initialize voices (needed for some browsers)
+if (window.speechSynthesis) {
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+    };
+}
 let vadSmoothingBuffer = [];
 
 // State
 let socket = null;
 let mediaRecorder = null;
-let audioContext = null;
+// audioContext is declared above in audio feedback system
 let isRecording = false;
 let audioQueue = [];
 let isPlaying = false;
@@ -116,19 +932,43 @@ function init() {
 }
 
 function initWebSocket() {
-    updateStatus('Connecting...');
+    console.log('[WebSocket] Attempting to connect to:', CONFIG.WS_URL);
+    updateStatus('Connecting to server...', 'connecting');
     
-    socket = new WebSocket(CONFIG.WS_URL);
+    try {
+        socket = new WebSocket(CONFIG.WS_URL);
+    } catch (e) {
+        console.error('[WebSocket] Failed to create WebSocket:', e);
+        updateStatus('WebSocket error', 'error');
+        return;
+    }
 
     socket.onopen = (e) => {
-        console.log("[open] Connection established to " + CONFIG.WS_URL);
-        updateStatus('Connected', 'connected');
+        console.log("[WebSocket] Connection established to " + CONFIG.WS_URL);
+        updateStatus('Connected - loading models...', 'loading');
+        // The server will send 'models_loading' then 'models_ready' messages
         sendControlMessage({ ttsMuted: isPaused });
     };
 
     socket.onmessage = async (event) => {
         try {
             const response = JSON.parse(event.data);
+            
+            // Handle model loading status - allows page to be interactive while loading
+            if (response.status === 'models_loading') {
+                console.log("🔄 Models loading:", response.message);
+                updateStatus('Loading AI models...', 'loading');
+                startAmbientAudio(); // Start ambient music while loading
+                return;
+            }
+            
+            // Handle models ready - now fully connected
+            if (response.status === 'models_ready') {
+                console.log("✅ Models ready:", response.message);
+                updateStatus('Connected', 'connected');
+                stopAmbientAudio(); // Stop ambient music when ready
+                return;
+            }
             
             // Handle safety violation - stop the conversation
             if (response.status === 'safety_violation') {
@@ -168,23 +1008,30 @@ function initWebSocket() {
     };
 
     socket.onclose = (event) => {
+        console.log('[WebSocket] Connection closed, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean);
         if (event.wasClean) {
-            updateStatus(`Disconnected`);
+            updateStatus('Disconnected', 'disconnected');
         } else {
-            updateStatus('Connection Lost');
-            // Optional: Auto-reconnect logic could go here
+            updateStatus('Connection lost - click Reconnect', 'error');
         }
+        // Auto-reconnect after 5 seconds
+        setTimeout(() => {
+            if (!socket || socket.readyState === WebSocket.CLOSED) {
+                console.log('[auto-reconnect] Attempting automatic reconnection...');
+                reconnect();
+            }
+        }, 5000);
     };
 
     socket.onerror = (error) => {
-        console.error(`[error] ${error.message}`);
-        updateStatus('Error');
+        console.error('[WebSocket] Error:', error);
+        updateStatus('Connection error - click Reconnect', 'error');
     };
 }
 
 function reconnect() {
     console.log("[reconnect] Attempting to reconnect...");
-    updateStatus('Reconnecting...');
+    updateStatus('Reconnecting...', 'connecting');
     
     // Close existing socket if open
     if (socket) {
@@ -201,6 +1048,40 @@ function reconnect() {
         initWebSocket();
     }, 500);
 }
+
+// Set up reconnect button click handler
+document.addEventListener('DOMContentLoaded', () => {
+    const reconnectBtn = document.getElementById('reconnectBtn');
+    if (reconnectBtn) {
+        reconnectBtn.addEventListener('click', () => {
+            console.log('[reconnect] Manual reconnect triggered');
+            reconnect();
+        });
+    }
+    
+    // Set up audio feedback toggle handlers
+    const audioFeedbackToggle = document.getElementById('audioFeedbackToggle');
+    if (audioFeedbackToggle) {
+        audioFeedbackToggle.addEventListener('change', (e) => {
+            toggleAudioFeedback(e.target.checked);
+            // Test sound when enabled
+            if (e.target.checked) {
+                setTimeout(() => StatusSounds.connected(), 100);
+            }
+        });
+    }
+    
+    const verbalFeedbackToggle = document.getElementById('verbalFeedbackToggle');
+    if (verbalFeedbackToggle) {
+        verbalFeedbackToggle.addEventListener('change', (e) => {
+            toggleVerbalFeedback(e.target.checked);
+            // Test verbal when enabled
+            if (e.target.checked) {
+                setTimeout(() => speakStatus('Verbal feedback enabled'), 100);
+            }
+        });
+    }
+});
 
 // --- Audio Handling ---
 
@@ -255,6 +1136,7 @@ async function startRecording() {
         // The complete file is delivered on stop() as a single chunk
         mediaRecorder.start(); 
         isRecording = true;
+        Haptics.recordStart();
         updateRecordButtonForMode();
 
     } catch (err) {
@@ -303,6 +1185,7 @@ function stopRecording() {
             activeStream = null;
         }
         isRecording = false;
+        Haptics.recordStop();
         updateRecordButtonForMode();
     }
 }
@@ -440,15 +1323,13 @@ function setupUI() {
         webcamBtn.addEventListener('click', toggleWebcam);
     }
 
-    // Scenario buttons
-    document.querySelectorAll('.scenario-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const scenario = btn.dataset.scenario;
-            currentScenario = scenario;
-            sendControlMessage({ scenario });
-        });
+    // Scenario buttons - handled via event since they're loaded dynamically
+    // The scenarioChanged event is dispatched by index.html when scenarios are clicked
+    window.addEventListener('scenarioChanged', (e) => {
+        const { scenario } = e.detail;
+        currentScenario = scenario;
+        sendControlMessage({ scenario });
+        console.log(`Scenario changed to: ${scenario}`);
     });
     
     // End Session button
@@ -478,6 +1359,15 @@ function setupUI() {
             }
         });
     }
+    
+    // Attach click sounds to all buttons
+    attachButtonClickSounds();
+    
+    // Re-attach sounds when new buttons are added (for dynamic content)
+    const observer = new MutationObserver(() => {
+        attachButtonClickSounds();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 }
 
 // Toggle mute function
@@ -511,14 +1401,29 @@ function updateStatus(text, state = 'default') {
     if (statusEl) {
         statusEl.textContent = text;
     }
+    const reconnectBtn = document.getElementById('reconnectBtn');
     if (statusBadge) {
-        statusBadge.classList.remove('connected', 'recording', 'error');
+        statusBadge.classList.remove('connected', 'recording', 'error', 'connecting', 'disconnected', 'loading');
         if (state === 'connected') {
             statusBadge.classList.add('connected');
+            if (reconnectBtn) reconnectBtn.classList.remove('visible');
         } else if (state === 'recording') {
             statusBadge.classList.add('recording');
+            if (reconnectBtn) reconnectBtn.classList.remove('visible');
+        } else if (state === 'connecting') {
+            statusBadge.classList.add('connecting');
+            if (reconnectBtn) reconnectBtn.classList.remove('visible');
+        } else if (state === 'error' || state === 'disconnected') {
+            statusBadge.classList.add(state);
+            if (reconnectBtn) reconnectBtn.classList.add('visible');
+        } else if (state === 'loading') {
+            statusBadge.classList.add('loading');
+            if (reconnectBtn) reconnectBtn.classList.remove('visible');
         }
     }
+    
+    // Trigger audio + verbal feedback
+    playStatusFeedback(state, text);
 }
 
 function updateRecordButtonForMode() {
@@ -1057,17 +1962,51 @@ async function endSessionAndAnalyze() {
     console.log('=== endSessionAndAnalyze CALLED ===');
     console.log('Ending session and analyzing...');
     
-    // Show modal with loading state
+    // Show modal with enhanced loading state
     const modal = document.getElementById('analysisModal');
     const contentEl = document.getElementById('analysisContent');
     
     modal.classList.add('active');
+    
+    // Enhanced loading animation with steps
     contentEl.innerHTML = `
-        <div class="loading">
-            <div class="spinner"></div>
-            <span>Analyzing your session...</span>
+        <div class="analysis-loading">
+            <div class="analysis-loading-spinner"></div>
+            <div class="analysis-loading-text">Analyzing your session...</div>
+            <div class="analysis-loading-steps">
+                <div class="analysis-step active" id="step-transcript">
+                    <span class="analysis-step-icon">1</span>
+                    <span>Processing conversation transcript</span>
+                </div>
+                <div class="analysis-step" id="step-metrics">
+                    <span class="analysis-step-icon">2</span>
+                    <span>Calculating performance metrics</span>
+                </div>
+                <div class="analysis-step" id="step-ai">
+                    <span class="analysis-step-icon">3</span>
+                    <span>Generating AI insights</span>
+                </div>
+                <div class="analysis-step" id="step-achievements">
+                    <span class="analysis-step-icon">4</span>
+                    <span>Checking achievements</span>
+                </div>
+            </div>
         </div>
     `;
+    
+    // Animate through steps
+    const animateSteps = async () => {
+        await new Promise(r => setTimeout(r, 500));
+        document.getElementById('step-transcript')?.classList.add('complete');
+        document.getElementById('step-transcript')?.classList.remove('active');
+        document.getElementById('step-metrics')?.classList.add('active');
+        
+        await new Promise(r => setTimeout(r, 400));
+        document.getElementById('step-metrics')?.classList.add('complete');
+        document.getElementById('step-metrics')?.classList.remove('active');
+        document.getElementById('step-ai')?.classList.add('active');
+    };
+    animateSteps();
     
     // Disable webcam if enabled
     disableWebcam();
@@ -1097,8 +2036,27 @@ async function endSessionAndAnalyze() {
             throw new Error('Analysis request failed');
         }
         
+        // Complete AI step
+        document.getElementById('step-ai')?.classList.add('complete');
+        document.getElementById('step-ai')?.classList.remove('active');
+        document.getElementById('step-achievements')?.classList.add('active');
+        
         const results = await response.json();
-        displayAnalysisResults(results, contentEl);
+        
+        // Check and award achievements
+        const newAchievements = AchievementSystem.checkAchievements(results);
+        
+        // Complete achievements step
+        await new Promise(r => setTimeout(r, 300));
+        document.getElementById('step-achievements')?.classList.add('complete');
+        document.getElementById('step-achievements')?.classList.remove('active');
+        
+        // Play completion sound and haptic
+        StatusSounds.analysisComplete();
+        Haptics.success();
+        
+        // Display results with achievements
+        displayAnalysisResults(results, contentEl, newAchievements);
         
     } catch (error) {
         console.error('Analysis failed:', error);
@@ -1117,7 +2075,7 @@ function getRatingClass(score) {
     return 'needs-work';
 }
 
-function displayAnalysisResults(results, contentEl) {
+function displayAnalysisResults(results, contentEl, newAchievements = []) {
     const score = results.overall_score || 0;
     const scorePercent = score;
     
@@ -1126,6 +2084,38 @@ function displayAnalysisResults(results, contentEl) {
         fillerTags = Object.entries(results.filler_words.details)
             .map(([word, count]) => `<span class="filler-tag">"${word}" × ${count}</span>`)
             .join('');
+    }
+    
+    // Build achievements HTML
+    let achievementsHtml = '';
+    if (newAchievements.length > 0 || AchievementSystem.getUnlocked().length > 0) {
+        const allUnlocked = AchievementSystem.getUnlocked();
+        const newIds = newAchievements.map(a => a.id);
+        
+        let badgesHtml = '';
+        allUnlocked.forEach(id => {
+            const achievement = AchievementSystem.achievements[id];
+            if (achievement) {
+                const isNew = newIds.includes(id);
+                badgesHtml += `
+                    <div class="achievement-badge ${isNew ? 'new' : ''}">
+                        <span class="achievement-icon">${achievement.icon}</span>
+                        <span class="achievement-name">${achievement.name}</span>
+                    </div>
+                `;
+            }
+        });
+        
+        if (badgesHtml) {
+            achievementsHtml = `
+                <div class="achievements-section">
+                    <h4>🏆 Achievements ${newAchievements.length > 0 ? `<span class="new-count">(+${newAchievements.length} new!)</span>` : ''}</h4>
+                    <div class="achievements-grid">
+                        ${badgesHtml}
+                    </div>
+                </div>
+            `;
+        }
     }
     
     let pacingHtml = '';
@@ -1217,6 +2207,9 @@ function displayAnalysisResults(results, contentEl) {
             <div class="ai-summary">${results.ai_summary}</div>
         </div>
         ` : ''}
+        
+        <!-- Achievements -->
+        ${achievementsHtml}
         
         <!-- Analysis Grid -->
         <div class="analysis-grid">

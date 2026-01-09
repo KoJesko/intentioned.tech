@@ -1,140 +1,105 @@
-# Intentioned - Social Training Platform #
+# Intentioned | Master Every Conversation
 
-Pace AI Research - Voice Assistant
-
-
-
-A self-hosted, open-source voice-powered AI assistant designed for social skills training. Practice conversations, improve communication skills, and receive real-time feedback.A real-time voice-powered AI assistant that uses Speech-to-Text (STT), a Large Language Model (LLM), and Text-to-Speech (TTS) to create a seamless conversational experience.
-
-
+A self-hosted, open-source voice-powered AI assistant designed for social skills training. Practice conversations, improve communication skills, and receive real-time AI feedback.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Python 3.13+](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/KoJesko/intentioned.tech)
 
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training)
+## ✨ Features
 
-## Features
+### Core Functionality
 - **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio
-
-- **Multiple Scenarios**: General chat, Study tutor, Coding help, Creative writing
-
-- **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)
-
-## Core Functionality- **HTTPS/WSS Support**: Secure connections with Let's Encrypt or self-signed certificates
-
-- **Real-time Voice Interaction**: Speak naturally and get AI responses back in audio
-
-- **Edge TTS**: High-quality Microsoft Edge voice synthesis
-
 - **Multiple Training Scenarios**: General chat, Study tutor, Coding help, Creative writing, Parent-Teacher conferences
-
-- **Whisper STT Mode**: OpenAI's Whisper large-v3 for accurate speech recognition (disabled by default due to halluinations)
-
 - **Two Mic Modes**: Push-to-Talk or Voice Activity Detection (VAD)
-
-- **Hermes LLM**: NousResearch Hermes-3-Llama-3.1-8B for intelligent responses
-
+- **HTTPS/WSS Support**: Secure connections with Let's Encrypt or self-signed certificates
 - **Eye Contact Tracking**: Optional webcam-based eye contact analysis
 
-## Communication Analysis
-
+### Communication Analysis
 - **Filler Word Detection**: Track and reduce "um", "uh", "like", etc.
-
 - **Speaking Pace (WPM)**: Measure words per minute for optimal delivery
-
 - **Response Time Tracking**: Analyze how quickly you respond in conversations
-
 - **Interruption Detection**: Track when you speak over the AI (target: <3)
-
 - **Speech Pacing**: Detect long pauses and maintain conversation flow
-
 - **Tone Analysis**: Get feedback on your conversational tone
 
-- **Microaggression Detection**: Learn to avoid unintentionally harmful phrases
-
-## Safety & Privacy
-
+### Safety & Privacy
 - **AI Content Moderation**: Intelligent content moderation (no hardcoded blacklists)
-
 - **Safety Violation Logging**: Incidents logged locally for review
+- **Self-Hosted**: All data stays on your machine - no cloud required
 
-- **Cross-Platform Support**: Works on Windows, macOS, and Linux
+## 🛠️ Technology Stack
 
-- **Self-Hosted**: All data stays on your machine
+| Component | Technology | Description |
+|-----------|------------|-------------|
+| **Backend** | FastAPI + Uvicorn | Async Python web framework |
+| **STT (Primary)** | NVIDIA Parakeet TDT 0.6B v3 | 600M params, 25 languages, CC-BY-4.0 |
+| **STT (Fallback)** | Wav2Vec2 / Vosk | CTC-based, zero hallucination |
+| **TTS (Primary)** | Kokoro 82M | StyleTTS2 architecture, Apache 2.0, 24kHz |
+| **TTS (Fallback)** | Microsoft Edge TTS / pyttsx3 | Cloud / offline options |
+| **LLM** | Qwen2.5-3B-Instruct | 4-bit quantized, intelligent responses |
+| **Eye Contact** | face-api.js (vladmandic fork) | Real-time webcam analysis |
+| **Frontend** | Vanilla HTML/CSS/JS | No build tools required |
+| **Protocol** | WebSocket (WS/WSS) | Real-time bidirectional audio |
 
-- Python 3.10+
+## 📋 System Requirements
 
-## System Requirements
-
-- NVIDIA GPU with CUDA support (recommended: 8GB+ VRAM)
-- Node.js (optional, for development)
-
-| Component | Technology |
-
-|-----------|------------|
-
-| Backend | FastAPI + Uvicorn |
-
-| STT | Wav2Vec2-large (CTC-based, zero hallucination) |
-
-| LLM | Qwen2.5-3B-Instruct (4-bit quantized) |
-
-| TTS | VibeVoice-Realtime-0.5B (Microsoft - natural expressive voice) |
-
-| TTS Fallback | Microsoft Edge TTS / pyttsx3 |
-
-| Eye Contact | face-api.js (vladmandic fork) |
-
-| Frontend | Vanilla HTML/CSS/JS |
-
-| Protocol | WebSocket (WS/WSS) |
-
-## Quick Start
-```bash
-
-   python server.py
-
-```
-- Python 3.10+
-
-**Access the UI**
-- NVIDIA GPU with CUDA support (recommended: 6GB+ VRAM)
-
-- Localhost access: `http://localhost:6942`
-  - Use SSL for enhanced capabilities (replace "http" with "https")
-
-- Webcam (optional, for eye contact tracking)
-
+- **Python**: 3.13+ (required for NeMo toolkit compatibility)
+- **GPU**: NVIDIA GPU with CUDA 12.x support (recommended: 8GB+ VRAM)
+- **VRAM Usage**: ~4-6GB for LLM + ~2GB for STT/TTS models
+- **Webcam**: Optional, for eye contact tracking
 
 ### Supported Platforms
 
-
-
 | Platform | Status | Notes |
-
 |----------|--------|-------|
-
 | **Linux** | ✅ Fully Supported | Ubuntu 20.04+, Debian 11+ |
-
 | **Windows** | ✅ Fully Supported | Windows 10/11 |
-
 | **macOS** | ✅ Fully Supported | macOS 11+ (Big Sur) |
 
+## 🚀 Quick Start
+
+## THE MSI FILE IS STILL IN BETA AND MAY NOT WORK PROPERLY. PLEASE FOLLOW MANUAL SETUP INSTEAD.
 
 1. **Clone the repository**
-
    ```bash
    git clone https://github.com/KoJesko/intentioned.tech
-   cd ./intentioned.tech
+   cd intentioned.tech
    ```
 
-2. **Run the server** (auto-creates virtualenv and installs dependencies)
+2. **Create Python 3.13 environment**
+   ```bash
+   # Using uv (recommended - faster)
+   uv venv myenv313 --python 3.13
+   
+   # Or using standard venv
+   python3.13 -m venv myenv313
+   ```
 
+3. **Activate the environment**
+   ```bash
+   # Windows
+   myenv313\Scripts\activate
+   
+   # Linux/macOS
+   source myenv313/bin/activate
+   ```
+
+4. **Install dependencies**
+   ```bash
+   # Install PyTorch with CUDA 12.8
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+   
+   # Install remaining requirements
+   pip install -r requirements.txt
+   ```
+
+5. **Run the server**
    ```bash
    python server.py
    ```
 
-3. **Access the UI**
-
+6. **Access the UI**
    - Local: `http://localhost:6942`
    - With SSL: `https://localhost:6942`
 
@@ -150,140 +115,120 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
 sudo chown $USER:$USER *.pem
 ```
 
-## Project Structure
-
-```
-├── server.py          # FastAPI backend (STT + LLM + TTS)
-├── script.js          # Frontend WebSocket client
-├── index.html         # UI with scenario selection
-├── cert.pem          # SSL certificate (not in repo)
-├── requirements.txt   # Python dependencies
-├── key.pem           # SSL private key (not in repo)
-└── README.md         # This file
-```
-
 ## 📋 Policies & Documentation
 
 - **[Privacy Policy](privacy_policy.html)**: How data is collected and stored
 - **[Terms of Use](terms_of_use.html)**: Usage terms and conditions
 - **[Code of Conduct](code_of_conduct.html)**: Community standards and rules
 
+## ⚙️ Configuration
 
-## Safety Violation Logs
-
-**Server → Client:**
-
-When content is flagged by the AI moderation system, logs are stored locally:
-
-| **Windows** | `%USERPROFILE%\Documents\simulation_safety_violations\` |}
-
-| **macOS** | `~/Documents/simulation_safety_violations/` |```
-
-| **Linux** | `~/Documents/simulation_safety_violations/` |
-
-## UI Features
-
-Logs are JSON files containing timestamps, session IDs, and conversation transcripts.
-
-- **Scenario Selection**: Choose context for AI responses
-
-## Configuration- **Mic Mode Toggle**: Push-to-Talk vs Voice Activity Detection
-
-- **Audio Visualizer**: Real-time waveform display
-
-### Environment Variables- **Connection Status**: Live server connection indicator
-
-- **Reconnect Button**: Manual reconnection option (Re-adding soon)
+### Environment Variables
 
 | Variable | Default | Description |
-
 |----------|---------|-------------|
-
 | `SERVER_HOST` | `0.0.0.0` | Bind address |
-
-| `SERVER_PORT` | `6942` | Server port |### "Connection Died" Error
-
-| `LLM_MODEL_ID` | `Qwen/Qwen2.5-3B-Instruct` | LLM model to use |- Check if the server is running: `ss -tulpn | grep 6942`
-
-| `HUGGING_FACE_HUB_TOKEN` | - | HuggingFace token (for gated models) |- Verify WebSocket URL matches the server port
-
-- For HTTPS, ensure certificates are valid
+| `SERVER_PORT` | `6942` | Server port |
+| `LLM_MODEL_ID` | `Qwen/Qwen2.5-3B-Instruct` | LLM model to use |
+| `HUGGING_FACE_HUB_TOKEN` | - | HuggingFace token (for gated models) |
 
 ### Running on Different Ports
 
-### GPU Out of Memory
-
-```bash- The LLM requires ~6-8GB VRAM (4-bit quantized)
-
-# Linux/macOS- Kill other GPU processes: `nvidia-smi` → find PIDs → `kill <pid>`
-
+```bash
+# Linux/macOS
 SERVER_PORT=8080 python server.py
 
-### Mixed Content Errors
-
-# Windows- If serving HTTPS, the WebSocket must also use WSS
-
-set SERVER_PORT=8080 && python server.py- The client auto-detects protocol from `window.location.protocol`
-
+# Windows
+set SERVER_PORT=8080 && python server.py
 ```
 
-## API Endpoints
+## 🔊 Available Voice Models
 
-AGPL License - feel free to use and modify!
+### Text-to-Speech (TTS)
+| Engine | Model | Size | Quality | License |
+|--------|-------|------|---------|---------|
+| **Kokoro** (Default) | Kokoro 82M | 82M params | ⭐⭐⭐⭐⭐ | Apache 2.0 |
+| VibeVoice | VibeVoice 0.5B | 500M params | ⭐⭐⭐⭐⭐ | MIT |
+| Edge TTS | Microsoft Neural | Cloud | ⭐⭐⭐⭐ | Proprietary |
+| pyttsx3 | System TTS | N/A | ⭐⭐ | MIT |
 
-| Endpoint | Type | Description |
+### Speech-to-Text (STT)
+| Engine | Model | Size | Accuracy | License |
+|--------|-------|------|----------|---------|
+| **Parakeet** (Default) | Parakeet TDT 0.6B v3 | 600M params | ⭐⭐⭐⭐⭐ | CC-BY-4.0 |
+| Wav2Vec2 | wav2vec2-large-960h | 315M params | ⭐⭐⭐⭐ | Apache 2.0 |
+| Vosk | vosk-model-en-us-0.22 | 1.8GB | ⭐⭐⭐ | Apache 2.0 |
 
-|----------|------|-------------|## 🙏 Acknowledgments
+## Project Structure
 
-| `GET /` | HTTP | Serves the web UI |
-
-| `GET /{path}` | HTTP | Static file serving |- [OpenAI Whisper](https://github.com/openai/whisper) for STT
-
-| `POST /api/analyze` | HTTP | Session analysis |- [NousResearch](https://nousresearch.com/) for the Hermes LLM
-
-| `WS /ws/chat` | WebSocket | Real-time audio chat |- [Edge TTS](https://github.com/rany2/edge-tts) for voice synthesis
-
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
-
-### WebSocket Protocol
-
-**Client → Server (Audio):**
-```json
-{
-  "audio": "<base64-encoded-audio>",
-  "mimeType": "audio/webm",
-  "isFinal": true
-}
+```
+├── server.py           # FastAPI backend (STT + LLM + TTS)
+├── config_tool.py      # GUI configuration tool
+├── config.json         # Configuration file (generated)
+├── script.js           # Frontend WebSocket client
+├── index.html          # UI with scenario selection
+├── requirements.txt    # Python dependencies
+├── privacy_policy.html
+├── terms_of_use.html
+├── code_of_conduct.html
+├── cert.pem            # SSL certificate (not in repo)
+├── key.pem             # SSL private key (not in repo)
+└── README.md           # This file
 ```
 
-**Client → Server (Control):**
-```json
-{
-  "type": "control",
-  "scenario": "parent-teacher",
-  "ttsMuted": false
-}
+## 🔧 Configuration Tool
+
+A GUI tool is included to customize scenarios, models, defaults, and moderation settings:
+
+```bash
+# Run the configuration tool
+python config_tool.py
+
+# Or build as executable
+pip install pyinstaller
+pyinstaller --onefile --windowed config_tool.py
 ```
 
-**Server → Client:**
-```json
-{
-  "text": "AI response text",
-  "audio": "<base64-encoded-mp3>",
-  "status": "streaming|complete|safety_violation"
-}
-```
+The tool allows you to:
+- **Customize Scenarios**: Add, edit, or remove training scenarios
+- **Configure Models**: Set default TTS/STT engines and voices
+- **Edit Moderation**: Customize the content moderation prompt
+- **Manage Voices**: Add or modify available voice options
+- **UI Settings**: Change title, subtitle, and feature toggles
 
-## UI Features
+Settings are saved to `config.json` which the server loads on startup.
+
+## 🔒 Safety Violation Logs
+
+When content is flagged by the AI moderation system, logs are stored locally:
+
+| Platform | Location |
+|----------|----------|
+| **Windows** | `%USERPROFILE%\Documents\simulation_safety_violations\` |
+| **macOS** | `~/Documents/simulation_safety_violations/` |
+| **Linux** | `~/Documents/simulation_safety_violations/` |
+
+Logs are JSON files containing timestamps, session IDs, and conversation transcripts.
+
+## 🖥️ UI Features
 
 - **Scenario Selection**: Choose training context with descriptions
 - **How to Use Guide**: Built-in instructions for new users
 - **Mic Mode Toggle**: Push-to-Talk vs Voice Activity Detection
 - **Eye Contact Tracking**: Real-time feedback on camera engagement
 - **Session Analysis**: Comprehensive performance report
-- **Connection Status**: Live server connection indicator
+- **Voice Selection**: Choose from 11+ Kokoro voices
 
-## Troubleshooting
+## 🔌 API Endpoints
+
+| Endpoint | Type | Description |
+|----------|------|-------------|
+| `GET /` | HTTP | Serves the web UI |
+| `GET /{path}` | HTTP | Static file serving |
+| `POST /api/analyze` | HTTP | Session analysis |
+| `WS /ws/chat` | WebSocket | Real-time audio chat |
+
+## 🔧 Troubleshooting
 
 ### "Connection Died" Error
 - Check if the server is running: `ss -tulpn | grep 6942` (Linux) or `netstat -an | findstr 6942` (Windows)
@@ -294,25 +239,15 @@ AGPL License - feel free to use and modify!
 - The LLM requires ~4-6GB VRAM (4-bit quantized)
 - Kill other GPU processes: `nvidia-smi` → find PIDs → `kill <pid>`
 
-### Mixed Content Errors
-- If serving HTTPS, the WebSocket must also use WSS
-- The client auto-detects protocol from `window.location.protocol`
+### NeMo/Parakeet Issues
+- Requires Python 3.13+ (not 3.14 - spacy compatibility)
+- If NeMo fails to load, falls back to Wav2Vec2
+- Check CUDA version matches PyTorch build
 
-### Microphone Not Working
-- Ensure HTTPS is enabled (required for browser mic access)
-- Check browser permissions for microphone
-- Try using localhost if on same machine
-
-### Eye Contact Not Tracking
-- Ensure webcam is enabled and not in use by other apps
-- Allow camera permissions in browser
-- Check browser console for face-api.js loading errors
-
-## License
+## 📜 License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
 
-This means:
 - ✅ You may use, modify, and distribute the software freely
 - ✅ You may use it for commercial purposes
 - ⚠️ If you modify and deploy the software over a network, you must make your source code available
@@ -322,12 +257,13 @@ See [LICENSE](LICENSE) for the full license text.
 
 ## 🙏 Acknowledgments
 
-- [Vosk](https://alphacephei.com/vosk/) for offline speech recognition
-- [OpenAI Whisper](https://github.com/openai/whisper) for STT (fallback)
-- [Qwen](https://github.com/QwenLM/Qwen2.5) for the LLM
-- [Edge TTS](https://github.com/rany2/edge-tts) for voice synthesis
-- [face-api.js](https://github.com/vladmandic/face-api) for eye contact detection
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
+- [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) - High-quality neural TTS (Apache 2.0)
+- [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) - Parakeet STT models (CC-BY-4.0)
+- [Qwen](https://github.com/QwenLM/Qwen2.5) - LLM backbone
+- [Edge TTS](https://github.com/rany2/edge-tts) - Microsoft neural voices
+- [Vosk](https://alphacephei.com/vosk/) - Offline speech recognition
+- [face-api.js](https://github.com/vladmandic/face-api) - Eye contact detection
+- [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
 
 ## 🤝 Contributing
 
@@ -341,5 +277,5 @@ Contributions are welcome! Please read our [Code of Conduct](code_of_conduct.htm
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/KoJesko/Honors-Thesis-Conversational-AI-Training/discussions)
+- **Issues**: [GitHub Issues](https://github.com/KoJesko/intentioned.tech/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/KoJesko/intentioned.tech/discussions)

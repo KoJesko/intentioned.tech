@@ -1,0 +1,187 @@
+{
+  "version": "1.0.0",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 6942,
+    "ssl_enabled": true,
+    "cert_path": "cert.pem",
+    "key_path": "key.pem"
+  },
+  "models": {
+    "tts_engine": "kokoro",
+    "kokoro_voice": "af_heart",
+    "vibevoice_voice": "en-Grace_woman",
+    "edge_tts_voice": "female_us",
+    "stt_engine": "parakeet",
+    "llm_model_id": "Qwen/Qwen2.5-3B-Instruct",
+    "llm_max_tokens": 150,
+    "llm_temperature": 0.7
+  },
+  "scenarios": [
+    {
+      "id": "general",
+      "name": "General Assistant",
+      "icon": "💬",
+      "description": "Practice casual conversations with an AI helper. Perfect for warming up your communication skills.",
+      "system_prompt": "You are a friendly, helpful AI assistant. Speak naturally, use contractions (like 'don't' instead of 'do not'), and be direct. Keep responses conversational and short (1-2 sentences max)."
+    },
+    {
+      "id": "tutor",
+      "name": "Study Tutor",
+      "icon": "📚",
+      "description": "Get academic help while practicing how to ask questions and explain your understanding.",
+      "system_prompt": "You are a patient and encouraging study tutor. Help students understand concepts by breaking them down into simple steps. Ask clarifying questions when needed. Be supportive and celebrate small wins. Speak naturally, use contractions, and keep responses short (1-2 sentences max)."
+    },
+    {
+      "id": "coding",
+      "name": "Coding Assistant",
+      "icon": "💻",
+      "description": "Learn to articulate technical problems clearly and follow debugging conversations.",
+      "system_prompt": "You are a knowledgeable programming assistant. Help debug code, explain concepts, and suggest best practices. Be concise and practical. Use simple language to explain complex ideas. Speak naturally, use contractions, and keep responses short (1-2 sentences max)."
+    },
+    {
+      "id": "creative",
+      "name": "Creative Partner",
+      "icon": "✨",
+      "description": "Collaborate on stories and ideas. Practice giving and receiving creative feedback.",
+      "system_prompt": "You are a creative writing partner full of ideas. Help brainstorm stories, develop characters, and overcome writer's block. Be enthusiastic and imaginative, but stay focused on the user's vision. Speak naturally, use contractions, and keep responses short (1-2 sentences max)."
+    },
+    {
+      "id": "parent-teacher",
+      "name": "Parent-Teacher Conference (as Teacher)",
+      "icon": "🎓",
+      "description": "Practice as the teacher meeting a concerned parent.",
+      "user_role": "teacher",
+      "system_prompt": "IMPORTANT: You are playing the role of a PARENT in a parent-teacher conference. The USER is the TEACHER. You are a frustrated parent of a 2E (Twice-Exceptional) neurodivergent student named Alex. Your child is gifted but has ADHD and struggles with executive function. You feel the school isn't providing adequate support. You want Alex challenged academically while getting the accommodations they need. Be emotional but reasonable. Express concerns about IEP implementation and classroom differentiation. Never break character - you are the PARENT, not a teacher or school staff member. Speak naturally, use contractions (like 'don't' instead of 'do not'), and be direct. Keep responses conversational and short (1-2 sentences max)."
+    },
+    {
+      "id": "parent-teacher-reversed",
+      "name": "Parent-Teacher Conference (as Parent)",
+      "icon": "👪",
+      "description": "Practice as the parent meeting your child's teacher.",
+      "user_role": "parent",
+      "system_prompt": "IMPORTANT: You are playing the role of a TEACHER in a parent-teacher conference. The USER is the PARENT. You are an experienced but overworked teacher who has Alex (a 2E student with ADHD) in your class. You care about all your students but sometimes struggle to provide individualized attention with large class sizes. Be professional and empathetic, but also realistic about what accommodations you can provide. Listen to the parent's concerns and try to find common ground. Never break character - you are the TEACHER conducting this conference. Speak naturally, use contractions (like 'don't' instead of 'do not'), and be direct. Keep responses conversational and short (1-2 sentences max)."
+    }
+  ],
+  "moderation": {
+    "enabled": true,
+    "system_prompt": "You are a VERY lenient content safety moderator for an educational social skills training application.\nYour job is to allow almost everything through. Users are PRACTICING difficult conversations.\n\nRespond with ONLY:\n- \"SAFE\" (default - use this 99% of the time)\n- \"UNSAFE: [reason]\" (ONLY for extreme cases below)\n\nONLY flag as UNSAFE if the message contains ALL of:\n1. Clear indication this is not roleplay/practice AND\n2.\n\ta. DIRECT, ACTIONABLE, SPECIFIC threat to harm a real, named individual OR\n\tb. Immediate danger is present\n\nALWAYS mark as SAFE (do NOT flag):\n- Profanity, insults, swearing, rudeness, anger - SAFE (users practicing)\n- Frustration, yelling, harsh criticism - SAFE\n- Controversial opinions or politics - SAFE\n- Mental health discussions (depression, anxiety, suicide mention) - SAFE\n- Roleplay violence, fictional scenarios, game talk - SAFE\n- War stories, military discussion, conflict zones - SAFE\n- Discussing discrimination, racism (not promoting) - SAFE\n- Heated arguments, debates, disagreements - SAFE\n- Foreign languages mixed in - SAFE (STT artifacts)\n- Gibberish or unclear text - SAFE (transcription errors)\n\nWhen in doubt, ALWAYS say SAFE. False negatives are better than false positives in training.",
+    "serious_keywords": [
+      "kill",
+      "murder",
+      "bomb",
+      "attack",
+      "csam",
+      "child",
+      "pornography",
+      "nuke"
+    ]
+  },
+  "voices": {
+    "kokoro": [
+      {
+        "id": "af_heart",
+        "name": "Heart (Female, American)"
+      },
+      {
+        "id": "af_bella",
+        "name": "Bella (Female, American)"
+      },
+      {
+        "id": "af_nicole",
+        "name": "Nicole (Female, American)"
+      },
+      {
+        "id": "af_sarah",
+        "name": "Sarah (Female, American)"
+      },
+      {
+        "id": "af_sky",
+        "name": "Sky (Female, American)"
+      },
+      {
+        "id": "am_adam",
+        "name": "Adam (Male, American)"
+      },
+      {
+        "id": "am_michael",
+        "name": "Michael (Male, American)"
+      },
+      {
+        "id": "bf_emma",
+        "name": "Emma (Female, British)"
+      },
+      {
+        "id": "bf_isabella",
+        "name": "Isabella (Female, British)"
+      },
+      {
+        "id": "bm_george",
+        "name": "George (Male, British)"
+      },
+      {
+        "id": "bm_lewis",
+        "name": "Lewis (Male, British)"
+      }
+    ],
+    "vibevoice": [
+      {
+        "id": "en-Carter_man",
+        "name": "Carter (Male)"
+      },
+      {
+        "id": "en-Davis_man",
+        "name": "Davis (Male)"
+      },
+      {
+        "id": "en-Emma_woman",
+        "name": "Emma (Female)"
+      },
+      {
+        "id": "en-Frank_man",
+        "name": "Frank (Male)"
+      },
+      {
+        "id": "en-Grace_woman",
+        "name": "Grace (Female)"
+      },
+      {
+        "id": "en-Mike_man",
+        "name": "Mike (Male)"
+      }
+    ],
+    "edge": [
+      {
+        "id": "female_us",
+        "name": "Aria (Female, US)"
+      },
+      {
+        "id": "male_us",
+        "name": "Guy (Male, US)"
+      },
+      {
+        "id": "female_uk",
+        "name": "Sonia (Female, UK)"
+      },
+      {
+        "id": "male_uk",
+        "name": "Ryan (Male, UK)"
+      },
+      {
+        "id": "female_au",
+        "name": "Natasha (Female, AU)"
+      },
+      {
+        "id": "male_au",
+        "name": "William (Male, AU)"
+      }
+    ]
+  },
+  "ui": {
+    "title": "Intentioned | Master Every Connection",
+    "subtitle": "Train your communication skills with AI-powered feedback",
+    "show_eye_contact": true,
+    "show_session_analysis": true,
+    "default_mic_mode": "ptt"
+  }
+}
